@@ -2,133 +2,460 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Block Encoder / Decoder (Keyed)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Block Cipher</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-primary: #0a0e14;
+  --bg-secondary: #141920;
+  --bg-tertiary: #1a1f28;
+  --accent: #6ee7b7;
+  --accent-dim: #34d399;
+  --text-primary: #e8eaed;
+  --text-secondary: #9ca3af;
+  --border: #2d3748;
+  --shadow: rgba(0, 0, 0, 0.4);
+}
+
 body {
-  font-family: sans-serif;
-  max-width: 720px;
-  margin: auto;
-  padding: 20px;
+  font-family: 'Literata', serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+  padding: 2rem 1rem;
+  background-image: 
+    radial-gradient(circle at 20% 30%, rgba(110, 231, 183, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(52, 211, 153, 0.03) 0%, transparent 50%);
 }
 
-textarea, input, button {
-  width: 100%;
-  margin-top: 6px;
-  padding: 8px;
-  font-size: 16px;
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  animation: fadeIn 0.6s ease-out;
 }
 
-textarea {
-  height: 80px;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+header {
+  margin-bottom: 3rem;
+  animation: slideDown 0.7s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+h1 {
+  font-size: 2.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-style: italic;
+}
+
+.section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 16px var(--shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  animation: slideUp 0.6s ease-out backwards;
+}
+
+.section:nth-child(2) { animation-delay: 0.1s; }
+.section:nth-child(3) { animation-delay: 0.2s; }
+.section:nth-child(4) { animation-delay: 0.3s; }
+.section:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.section:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px var(--shadow);
 }
 
 label {
-  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+
+.label-text {
+  flex: 1;
+}
+
+.char-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.compression-stats {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: none;
+}
+
+.compression-stats.visible {
   display: block;
-  font-weight: bold;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.stat-row:last-child {
+  margin-bottom: 0;
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.stat-value.positive {
+  color: var(--accent);
+}
+
+.stat-value.negative {
+  color: #f87171;
+}
+
+input, textarea {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  resize: vertical;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(110, 231, 183, 0.1);
+  background: var(--bg-secondary);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+textarea {
+  min-height: 120px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.button-group {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+button {
+  flex: 1;
+  padding: 0.875rem 1.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: 'Literata', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(110, 231, 183, 0.1);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s ease, height 0.4s ease;
+}
+
+button:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+button:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button.primary {
+  background: linear-gradient(135deg, var(--accent-dim) 0%, var(--accent) 100%);
+  border-color: var(--accent);
+  color: var(--bg-primary);
+}
+
+button.primary:hover {
+  box-shadow: 0 4px 16px rgba(110, 231, 183, 0.3);
+}
+
+button span {
+  position: relative;
+  z-index: 1;
+}
+
+.success-indicator {
+  position: fixed;
+  top: 2rem;
+  right: 2rem;
+  background: var(--accent);
+  color: var(--bg-primary);
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  box-shadow: 0 4px 16px rgba(110, 231, 183, 0.4);
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: all 0.3s ease;
+  z-index: 1000;
+}
+
+.success-indicator.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 640px) {
+  body {
+    padding: 1rem;
+  }
+  
+  h1 {
+    font-size: 2rem;
+  }
+  
+  .section {
+    padding: 1.5rem;
+  }
+  
+  .button-group {
+    flex-direction: column;
+  }
+  
+  button {
+    width: 100%;
+  }
 }
 </style>
 </head>
 
 <body>
 
-<h2>Block Encoder / Decoder (with Key)</h2>
+<div class="container">
+  <header>
+    <h1>Block Cipher</h1>
+    <p class="subtitle">Compress and encrypt text with visual encoding</p>
+  </header>
 
-<label>Encryption Key (optional)</label>
-<input id="keyInput" placeholder="Enter key">
+  <div class="section">
+    <label>Encryption Key</label>
+    <input id="keyInput" type="text" placeholder="Optional passphrase for encoding">
+  </div>
 
-<label>Text to Encode</label>
-<textarea id="textInput"></textarea>
+  <div class="section">
+    <label>
+      <span class="label-text">Input Text</span>
+      <span class="char-count" id="inputCount">0 characters</span>
+    </label>
+    <textarea id="textInput" placeholder="Enter text to encode..."></textarea>
+    <div class="button-group">
+      <button class="primary" id="encodeBtn">
+        <span>Encode</span>
+      </button>
+    </div>
+  </div>
 
-<button id="encodeBtn">Encode</button>
+  <div class="section">
+    <label>
+      <span class="label-text">Encoded Output</span>
+      <span class="char-count" id="encodedCount">0 characters</span>
+    </label>
+    <textarea id="encodedOutput" placeholder="Encoded text will appear here..." readonly></textarea>
+    
+    <div class="compression-stats" id="compressionStats">
+      <div class="stat-row">
+        <span class="stat-label">Original Size</span>
+        <span class="stat-value" id="originalSize">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Encoded Size</span>
+        <span class="stat-value" id="encodedSize">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Compression</span>
+        <span class="stat-value" id="compressionPercent">0%</span>
+      </div>
+    </div>
+    
+    <div class="button-group">
+      <button id="copyEncodedBtn">
+        <span>Copy</span>
+      </button>
+      <button class="primary" id="decodeBtn">
+        <span>Decode</span>
+      </button>
+    </div>
+  </div>
 
-<label>Encoded Blocks</label>
-<textarea id="encodedOutput"></textarea>
+  <div class="section">
+    <label>
+      <span class="label-text">Decoded Output</span>
+      <span class="char-count" id="decodedCount">0 characters</span>
+    </label>
+    <textarea id="decodedOutput" placeholder="Decoded text will appear here..." readonly></textarea>
+    <div class="button-group">
+      <button id="copyDecodedBtn">
+        <span>Copy</span>
+      </button>
+    </div>
+  </div>
+</div>
 
-<button id="copyEncodedBtn">Copy Encoded</button>
-
-<button id="decodeBtn">Decode</button>
-
-<label>Decoded Text</label>
-<textarea id="decodedOutput"></textarea>
-
-<button id="copyDecodedBtn">Copy Decoded</button>
+<div id="successIndicator" class="success-indicator">Copied!</div>
 
 <script>
 // ================= CONFIG =================
 
-// Paste your big blockChars array here
-// Generate printable Unicode dynamically
 const blockChars = (() => {
   const out = [];
-
   for (let cp = 0x21; cp <= 0x10FFFF; cp++) {
-    // skip surrogates
     if (cp >= 0xD800 && cp <= 0xDFFF) continue;
-
     const ch = String.fromCodePoint(cp);
-
-    // reject whitespace
     if (/\s/.test(ch)) continue;
-
-    // reject control / format
     if (/[\p{Cc}\p{Cf}]/u.test(ch)) continue;
-
-    // reject combining marks
     if (/\p{Mn}|\p{Me}/u.test(ch)) continue;
-
     out.push(ch);
   }
-
   return out;
 })();
 
-const bigrams = [
-  "th","he","in","er","an","re","on","at","en","nd",
-  "ti","es","or","te","of","ed","is","it","al","ar",
-  "st","to","nt","ng","se","ha","as","ou","io","le",
-  "ve","co","me","de","hi","ri"
-];
-
 const DICT = [
-  // space aware
   " the ", " and ", " to ", " of ", " in ", " for ", " with ", " on ", " that ",
   " is ", " was ", " are ", " be ", " have ", " not ", " it ", " this ", " you ",
-
-  // core trigrams
   "the","and","ing","ion","tio","ent","for","tha","ati","her","ter","ere","ate",
   "his","con","res","ver","all","nce","men","ith","ted","ers","pro","thi","wit",
   "are","ess","not","ive","was","ect","rea","com","eve","per","int","est","sta",
-
-  // bigrams (real English only)
   "th","he","in","er","an","re","on","at","en","nd","ti","es","or","te","of","ed",
   "is","it","al","ar","st","to","nt","ng","se","ha","as","ou","io","le","ve","co",
-
-  // suffixes
   "ing ","tion","ment","ness","able","less","ful","ous","ive","ity","est","ant","ent",
-
-  // prefixes
   "un","re","dis","pre","over","under","sub","inter","non",
-
-  // common short words
   "the","and","for","you","with","this","that","have","from","they","your","were",
   "which","their","there","would","could","should",
-
-  // punctuation patterns
   ". ", ", ", "? ", "! ", "\n\n"
-].sort(function(a, b) {
-  return b.length - a.length;
-});
+].sort((a, b) => b.length - a.length);
 
-// map allowed chars to small ints
 const allowedChars =
 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !@#$%^&*()-_=+/?.,:\"'<>[]{}\\|;\n\t";
 
 const CHAR_TO_ID = Object.fromEntries([...allowedChars].map((c,i)=>[c,i]));
 const ID_TO_CHAR = [...allowedChars];
-
-// dictionary IDs start AFTER chars
 const DICT_BASE = allowedChars.length;
 
 // ================= KEY =================
@@ -151,15 +478,11 @@ async function getKeyedBlockChars() {
 
 // ================= TOKENIZER =================
 
-// Converts string → integer tokens
 function tokenize(str) {
   const out = [];
   let i = 0;
-
   while (i < str.length) {
     let matched = false;
-
-    // dictionary longest-first
     for (const entry of DICT) {
       if (str.startsWith(entry, i)) {
         out.push(DICT_BASE + DICT.indexOf(entry));
@@ -168,27 +491,20 @@ function tokenize(str) {
         break;
       }
     }
-
     if (matched) continue;
-
     const c = str[i];
     if (c in CHAR_TO_ID) {
       out.push(CHAR_TO_ID[c]);
     } else {
-      // literal passthrough using negative UTF codepoint
       out.push(-str.codePointAt(i));
     }
-
     i++;
   }
-
   return out;
 }
 
-// integer tokens → string
 function detokenize(tokens) {
   let out = "";
-
   for (const t of tokens) {
     if (t < 0) {
       out += String.fromCodePoint(-t);
@@ -198,7 +514,6 @@ function detokenize(tokens) {
       out += DICT[t - DICT_BASE];
     }
   }
-
   return out;
 }
 
@@ -206,9 +521,7 @@ function detokenize(tokens) {
 
 async function encodeToBlocks(input) {
   const keyed = await getKeyedBlockChars();
-
   const tokens = tokenize(input);
-
   const maxToken = DICT_BASE + DICT.length;
   const bitsPerToken = Math.ceil(Math.log2(maxToken));
   const bitsPerBlock = Math.floor(Math.log2(keyed.length));
@@ -219,7 +532,6 @@ async function encodeToBlocks(input) {
 
   for (const t of tokens) {
     if (t < 0) {
-      // flush
       while (bits >= BigInt(bitsPerBlock)) {
         bits -= BigInt(bitsPerBlock);
         out += keyed[Number((buf >> bits) & BigInt((1<<bitsPerBlock)-1))];
@@ -249,7 +561,6 @@ async function encodeToBlocks(input) {
 async function decodeFromBlocks(str) {
   const keyed = await getKeyedBlockChars();
   const map = Object.fromEntries(keyed.map((c,i)=>[c,i]));
-
   const maxToken = DICT_BASE + DICT.length;
   const bitsPerToken = Math.ceil(Math.log2(maxToken));
   const bitsPerBlock = Math.floor(Math.log2(keyed.length));
@@ -260,7 +571,6 @@ async function decodeFromBlocks(str) {
 
   for (const c of str) {
     if (!(c in map)) {
-      // literal passthrough
       while (bits >= BigInt(bitsPerToken)) {
         bits -= BigInt(bitsPerToken);
         tokens.push(Number((buf>>bits)&BigInt((1<<bitsPerToken)-1)));
@@ -282,32 +592,100 @@ async function decodeFromBlocks(str) {
 
   return detokenize(tokens);
 }
+
 // ================= UI =================
 
 const textInput = document.getElementById("textInput");
 const encodedOutput = document.getElementById("encodedOutput");
 const decodedOutput = document.getElementById("decodedOutput");
+const keyInput = document.getElementById("keyInput");
+const successIndicator = document.getElementById("successIndicator");
+
+const inputCount = document.getElementById("inputCount");
+const encodedCount = document.getElementById("encodedCount");
+const decodedCount = document.getElementById("decodedCount");
+
+const compressionStats = document.getElementById("compressionStats");
+const originalSize = document.getElementById("originalSize");
+const encodedSize = document.getElementById("encodedSize");
+const compressionPercent = document.getElementById("compressionPercent");
+
+function updateCharCount(element, countElement) {
+  const count = element.value.length;
+  countElement.textContent = `${count.toLocaleString()} character${count !== 1 ? 's' : ''}`;
+}
+
+function updateCompressionStats(originalLen, encodedLen) {
+  if (originalLen === 0 || encodedLen === 0) {
+    compressionStats.classList.remove('visible');
+    return;
+  }
+
+  originalSize.textContent = `${originalLen.toLocaleString()} chars`;
+  encodedSize.textContent = `${encodedLen.toLocaleString()} chars`;
+  
+  const ratio = ((encodedLen - originalLen) / originalLen) * 100;
+  const percent = Math.abs(ratio).toFixed(1);
+  
+  if (ratio < 0) {
+    compressionPercent.textContent = `${percent}% smaller`;
+    compressionPercent.className = 'stat-value positive';
+  } else {
+    compressionPercent.textContent = `${percent}% larger`;
+    compressionPercent.className = 'stat-value negative';
+  }
+  
+  compressionStats.classList.add('visible');
+}
+
+// Event listeners for character counting
+textInput.addEventListener('input', () => updateCharCount(textInput, inputCount));
+encodedOutput.addEventListener('input', () => updateCharCount(encodedOutput, encodedCount));
+decodedOutput.addEventListener('input', () => updateCharCount(decodedOutput, decodedCount));
+
+function showSuccess() {
+  successIndicator.classList.add('show');
+  setTimeout(() => {
+    successIndicator.classList.remove('show');
+  }, 2000);
+}
 
 document.getElementById("encodeBtn").onclick = async () => {
+  if (!textInput.value) return;
   localStorage.setItem("blockEncoderKey", keyInput.value);
-  encodedOutput.value = await encodeToBlocks(textInput.value);
+  const encoded = await encodeToBlocks(textInput.value);
+  encodedOutput.value = encoded;
+  updateCharCount(encodedOutput, encodedCount);
+  updateCompressionStats(textInput.value.length, encoded.length);
 };
 
 document.getElementById("decodeBtn").onclick = async () => {
+  if (!encodedOutput.value) return;
   localStorage.setItem("blockEncoderKey", keyInput.value);
-  decodedOutput.value = await decodeFromBlocks(encodedOutput.value);
+  const decoded = await decodeFromBlocks(encodedOutput.value);
+  decodedOutput.value = decoded;
+  updateCharCount(decodedOutput, decodedCount);
 };
 
 document.getElementById("copyEncodedBtn").onclick = () => {
-  encodedOutput.select();
-  document.execCommand("copy");
+  if (!encodedOutput.value) return;
+  navigator.clipboard.writeText(encodedOutput.value).then(() => {
+    showSuccess();
+  });
 };
 
 document.getElementById("copyDecodedBtn").onclick = () => {
-  decodedOutput.select();
-  document.execCommand("copy");
+  if (!decodedOutput.value) return;
+  navigator.clipboard.writeText(decodedOutput.value).then(() => {
+    showSuccess();
+  });
 };
 
+// Load saved key
+const savedKey = localStorage.getItem("blockEncoderKey");
+if (savedKey) {
+  keyInput.value = savedKey;
+}
 </script>
 
 </body>
