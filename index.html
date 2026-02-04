@@ -514,13 +514,20 @@ const debouncedDecode = debounce(liveDecodeFromEncoded, 220);
 // wire up two-way live conversion (only trigger when user edits the field)
 textInput.addEventListener('input', (ev) => {
   if (document.activeElement !== textInput) return;
+  // update counter immediately so the UI reflects user typing (don't wait for debounce/encode)
+  updateCharCount(textInput, inputCount);
   debouncedEncode();
 });
+// IME composition can delay the final `input` event — ensure counter updates when composition ends
+textInput.addEventListener('compositionend', () => updateCharCount(textInput, inputCount));
 
 encodedOutput.addEventListener('input', (ev) => {
   if (document.activeElement !== encodedOutput) return;
+  // update counter immediately for edits/pastes
+  updateCharCount(encodedOutput, encodedCount);
   debouncedDecode();
 });
+encodedOutput.addEventListener('compositionend', () => updateCharCount(encodedOutput, encodedCount));
 
 // re-run appropriate transform when key changes
 keyInput.addEventListener('input', debounce(() => {
