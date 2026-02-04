@@ -218,7 +218,7 @@ const DICT = [
 
 // map allowed chars to small ints
 const allowedChars =
-"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !@#$%^&*()-_=+/?.,:\"'<>[]{}\\|;\n\t";
+"\u{200C}ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !@#$%^&*()-_=+/?.,:\"'<>[]{}\\|;\n\t";
 
 const CHAR_TO_ID = Object.fromEntries([...allowedChars].map((c,i)=>[c,i]));
 const ID_TO_CHAR = [...allowedChars];
@@ -299,7 +299,19 @@ function detokenize(tokens) {
 
 // ================= BITPACK =================
 
+function removeInvisible(input) {
+  result = "";
+  for (const char of input) {
+    if (char != "\u{200C}") {
+      result += char;
+    }
+  }
+  return result;
+
+}
+
 async function encodeToBlocks(input) {
+  input = removeInvisible(input);
   const keyed = await getKeyedBlockChars();
 
   const tokens = tokenize(input);
@@ -375,7 +387,8 @@ async function decodeFromBlocks(str) {
     }
   }
 
-  return detokenize(tokens);
+  return removeInvisible(detokenize(tokens));
+
 }
 // ================= UI =================
 
