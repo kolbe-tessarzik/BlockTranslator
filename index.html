@@ -4,9 +4,7 @@
 <meta charset="UTF-8">
 <title>Block Encoder / Decoder (Keyed)</title>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Literata:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="fontstyles.css" rel="stylesheet">
 
 <style>
 /* --- Base reset --- */
@@ -150,7 +148,7 @@ button:hover::before{ width:300px; height:300px; }
 <div id="successIndicator" class="success-indicator">Copied!</div>
 
 <script src="polyfill.js"></script>
-<script src="codec.js"></script>
+<script src="manager.js"></script>
 <script>
 /* core encoder/decoder moved to `codec.js` — use `encrypt`/`decrypt` (or `BlockCodec.*`).
    The UI + debouncing remain here. */
@@ -319,6 +317,17 @@ if (encodedOutput.value) {
 } else if (textInput.value) {
   debouncedEncode();
 }
+
+function waitForManager() {
+  while (!window.managerJSLoaded) {
+
+  }
+}
+
+waitForManager();
+
+addVersion("Latest", "codec.js");
+loadMyScript("Latest");
 
 </script>
 
