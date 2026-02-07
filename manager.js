@@ -1,5 +1,5 @@
 let myScript;
-
+console.log("Script loaded!");
 let jsonData = {};
 window.allVersions = [];
 
@@ -19,10 +19,10 @@ function loadMyScript(version) {
       return;
     }
     if (myScript) {
-        if (cleanup) {
+        if (window.cleanup) {
           // allow script to clean up before unloading
-          await cleanup();
-          cleanup = undefined;
+          await window.cleanup();
+          window.cleanup = undefined;
         }
         document.head.removeChild(myScript);
     }
@@ -49,11 +49,27 @@ function addVersion(name, url) {
 
 window.managerJSLoaded = true;
 
+async function loadDataForCache(url) {
+  const response = await fetch(url);
+  await response.text();
+}
+
 async function loadStuff() {
-  const response = await fetch(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslatorCrossVersion@main/versions.json?force=1`);
+  // &${Date.now()} is to bust cache
+  console.log("Fetching versions . . .");
+  const response = await fetch(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslatorCrossVersion@main/versions.json?force=1&${Date.now()}`);
 
   jsonData = {...jsonData, ... JSON.parse(await response.text()) };
   window.allVersions = Array.from(Object.keys(jsonData));
+  for (const ver of window.allVersions) {
+    // don't await, the point is just to cache for faster loading in the future
+    // loadDataForCache(ver);
+  }
 }
 
-loadStuff().then(() => console.log(window.allVersions));
+loadStuff().then(() => {
+  window.versionsLoaded = true;
+  window.dispatchEvent(new Event("versions-loaded"));
+}).catch((error) => {
+  console.error('Failed to load versions:', error);
+});

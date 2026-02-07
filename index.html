@@ -30,7 +30,7 @@ body{
 }
 .container{ max-width: 1100px; margin: 0 auto; }
 header{ margin-bottom: 2.25rem; }
-h1{ font-size: 2rem; font-weight: 600; background: linear-gradient(135deg,var(--text-primary),var(--accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom: 0.5rem; }
+h1{ font-size: 2rem; font-weight: 600; background: linear-gradient(135deg,var(--text-primary),var(--accent)); background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom: 0.5rem; }
 .subtitle{ color:var(--text-secondary); font-size:0.95rem; font-style:italic; }
 
 .section{
@@ -94,9 +94,17 @@ button:hover::before{ width:300px; height:300px; }
 
 @media (max-width:640px){ body{ padding:1rem; } h1{ font-size:1.6rem; } .button-group{ flex-direction:column; } }
 </style>
+<script src="polyfill.js"></script>
+<script src="manager.js"> </script>
+<script src="impl.js">    </script>
 </head>
 
 <body>
+<label for="versions">Using version:</label>
+<select name="versions" id="versions">
+  <option value="Latest">Latest Version (1.0.0)</option>
+</select>
+
 <div class="container">
   <header>
     <h1>Block Cipher</h1>
@@ -147,13 +155,10 @@ button:hover::before{ width:300px; height:300px; }
 
 <div id="successIndicator" class="success-indicator">Copied!</div>
 
-<script src="polyfill.js"></script>
-<script src="manager.js"></script>
 <script>
-/* core encoder/decoder moved to `codec.js` — use `encrypt`/`decrypt` (or `BlockCodec.*`).
-   The UI + debouncing remain here. */
-
 // ================= UI =================
+
+const versionDropdown = document.getElementById("versions");
 
 const textInput = document.getElementById("textInput");
 const encodedOutput = document.getElementById("encodedOutput");
@@ -222,6 +227,25 @@ function updateCompressionStats(original, encoded) {
   compressionStats.classList.add('visible');
 }
 
+async function specialEncrypt(text, key) {
+  await loadMyScript(versionDropdown.value);
+  const verCode = (versionDropdown.value == "Latest") ? encodeVersionScript("Kolbe 0.0.0") : encodeVersionScript(versionDropdown.value);
+  return verCode + (await encrypt(text, key))
+}
+
+async function specialDecrypt(text, key) {
+  const version = decodeVersion(text[0]);
+  try {
+    await loadMyScript(version);
+  } catch {
+    // invalid verision, just use latest
+    await loadMyScript("Latest");
+  }
+  const result = await decrypt(text.slice(1), key);
+  await loadMyScript(versionDropdown.value);
+  return result;
+}
+
 async function liveEncodeFromInput() {
   if (_suppress) return;
   const src = textInput.value;
@@ -237,7 +261,7 @@ async function liveEncodeFromInput() {
   _suppress = true;
   try {
     localStorage.setItem("blockEncoderKey", keyInput.value);
-    const encoded = await encrypt(src, keyInput.value);
+    const encoded = await specialEncrypt(src, keyInput.value);
     encodedOutput.value = encoded;
     updateCharCount(encodedOutput, encodedCount);
     updateCompressionStats(src, encoded);
@@ -261,7 +285,7 @@ async function liveDecodeFromEncoded() {
   _suppress = true;
   try {
     localStorage.setItem("blockEncoderKey", keyInput.value);
-    const decoded = await decrypt(src, keyInput.value);
+    const decoded = await specialDecrypt(src, keyInput.value);
     // update the human-readable input
     textInput.value = decoded;
     updateCharCount(textInput, inputCount);
@@ -318,16 +342,19 @@ if (encodedOutput.value) {
   debouncedEncode();
 }
 
-function waitForManager() {
-  while (!window.managerJSLoaded) {
-
+async function loadOptions() {
+  console.log("Loading . . .");
+  for (const name of window.allVersions) {
+    if (name !== "Latest") {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      versionDropdown.appendChild(option);
+    }
   }
+  console.log("Loaded successfully");
 }
-
-waitForManager();
-
-addVersion("Latest", "codec.js");
-loadMyScript("Latest");
+window.addEventListener("versions-loaded", loadOptions);
 
 </script>
 
