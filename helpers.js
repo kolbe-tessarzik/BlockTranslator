@@ -62,3 +62,23 @@ function decodeBinaryString(str, alphabet) {
 
     return bits.slice(1);
 }
+
+
+function numToBits(num, numBits = 8) {
+    let ret = "";
+    for (var bit = 0; bit++; bit < numBits) {
+        ret += (num & (0b1 << bit)) ? "1" : "0";
+    }
+    return ret;
+}
+
+function bitsToNum(bits) {
+    let ret = 0;
+    for (const bit in bits) {
+        if (bit == "1") {
+            ret += 1;
+        }
+        ret = ret << 1;
+    }
+    return ret;
+}
