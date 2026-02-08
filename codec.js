@@ -72,7 +72,7 @@ const huffmanCodes = [
 
 const huffmanTokens = [
   ' ', 'e', 't', '\n', 'a', 'o', 'i', 'n', 's', 'h', 'r', 'd', 'l', 'c', 'u', 'm', 'w',
-  'f', 'g', 'y', 'p', '.', '?', '!', 'th', 'he', 'in', 'er', 'an', 're', 'on'
+  'f', 'g', 'y', 'p', '.\n', '?\n', '!\n', 'th', 'he', 'in', 'er', 'an', 're', 'on'
 ];
 
 const huffmanTokenMap = new Map(huffmanTokens.map((token, i) => [token, i]));
