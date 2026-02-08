@@ -70,33 +70,60 @@ const huffmanCodes = [
   "11111",
 ];
 
-const huffmanChars = [
+const huffmanTokens = [
   ' ', 'e', 't', '\n', 'a', 'o', 'i', 'n', 's', 'h', 'r', 'd', 'l', 'c', 'u', 'm', 'w',
-  'f', 'g', 'y', 'p', 'b', 'v', 'k', 'j', 'x', 'q', 'z', ".", "!", "?"
+  'f', 'g', 'y', 'p', '.', '?', '!', 'th', 'he', 'in', 'er', 'an', 're', 'on'
 ];
+
+const huffmanTokenMap = new Map(huffmanTokens.map((token, i) => [token, i]));
+const maxHuffmanTokenLen = huffmanTokens.reduce((max, token) => Math.max(max, token.length), 0);
+
+function appendBits(buf, bits) {
+  if (typeof bits !== "string" || !/^[01]+$/.test(bits)) {
+    throw new Error(`Invalid bits '${bits}'`);
+  }
+  return buf + bits;
+}
 
 function encode(text, key) {
   console.log("Encoding . . .");
   let buf = "";
-  for (const char of text) {
-    const index = huffmanChars.indexOf(char);
-    if (index === -1) {
-      // not in compression index, encode literally
-      buf += "0"; // 0 for not huffman
-      if (char.codePointAt(0) < 256) {
-        // sign that char is packed in one byte
-        buf += "0";
-        const encoded = helper.numToBits(char.charCodeAt(0), 8);
-        buf += encoded;
-      } else {
-        // sign that char is packed in 21 bits
-        buf += "1";
-        buf += numToBits(char.codePointAt(0), 21);
+  const chars = Array.from(text);
+  for (let i = 0; i < chars.length; i++) {
+    let matched = false;
+    const maxLen = Math.min(maxHuffmanTokenLen, chars.length - i);
+
+    for (let len = maxLen; len >= 1; len--) {
+      const token = chars.slice(i, i + len).join("");
+      const index = huffmanTokenMap.get(token);
+      if (index !== undefined) {
+        // encode with huffman (token can be multi-char)
+        buf = appendBits(buf, "1");
+        const code = huffmanCodes[index];
+        if (code === undefined) {
+          throw new Error(`Missing Huffman code for token '${token}'`);
+        }
+        buf = appendBits(buf, code);
+        i += len - 1;
+        matched = true;
+        break;
       }
+    }
+
+    if (matched) continue;
+
+    const char = chars[i];
+    // not in compression index, encode literally
+    buf = appendBits(buf, "0"); // 0 for not huffman
+    if (char.codePointAt(0) < 256) {
+      // sign that char is packed in one byte
+      buf = appendBits(buf, "0");
+      const encoded = helper.numToBits(char.charCodeAt(0), 8);
+      buf = appendBits(buf, encoded);
     } else {
-      // encode with huffman
-      buf += "1";
-      buf += huffmanCodes[index];
+      // sign that char is packed in 21 bits
+      buf = appendBits(buf, "1");
+      buf = appendBits(buf, helper.numToBits(char.codePointAt(0), 21));
     }
   }
   // now apply shift for encryption
@@ -138,16 +165,19 @@ async function decode(str, key) {
       const charLen = bitToBool(bits[i]) ? 21 : 8;
       i++;
       // read charLen bits of code
-      result += String.fromCharCode(helper.bitsToNum(bits.slice(i, i+charLen)));
+      result += String.fromCodePoint(helper.bitsToNum(bits.slice(i, i+charLen)));
       i += charLen - 1;
     } else {
       // huffman encoding
       let readHuffmanBits = "";
       while (huffmanCodes.indexOf(readHuffmanBits) === -1) {
         i++;
+        if (i >= bits.length) {
+          throw new Error("Truncated Huffman code in stream");
+        }
         readHuffmanBits += bits[i];
       }
-      result += huffmanChars[huffmanCodes.indexOf(readHuffmanBits)];
+      result += huffmanTokens[huffmanCodes.indexOf(readHuffmanBits)];
     }
   }
   return result;
