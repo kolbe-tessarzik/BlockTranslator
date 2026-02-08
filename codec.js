@@ -1,3 +1,5 @@
+import pako from "https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.esm.mjs";
+
 let helper;
 
 if (window.location.href.includes("http://localhost:")) {
@@ -1711,15 +1713,11 @@ function bitsToBytesExact(bits) {
 }
 
 async function gzipCompressBytes(bytes) {
-  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
-  const ab = await new Response(stream).arrayBuffer();
-  return new Uint8Array(ab);
+  return pako.gzip(bytes);
 }
 
 async function gzipDecompressBytes(bytes) {
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-  const ab = await new Response(stream).arrayBuffer();
-  return new Uint8Array(ab);
+  return pako.ungzip(bytes);
 }
 
 async function encode(text, key) {
