@@ -66,7 +66,7 @@ export function decodeBinaryString(str, alphabet) {
 
 export function numToBits(num, numBits = 8) {
     let ret = "";
-    for (var bit = 0; bit++; bit < numBits) {
+    for (var bit = 0; bit < numBits; bit++) {
         ret += (num & (0b1 << bit)) ? "1" : "0";
     }
     return ret;
@@ -74,7 +74,7 @@ export function numToBits(num, numBits = 8) {
 
 export function bitsToNum(bits) {
     let ret = 0;
-    for (const bit in bits) {
+    for (const bit of bits) {
         if (bit == "1") {
             ret += 1;
         }
