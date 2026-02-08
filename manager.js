@@ -2,6 +2,8 @@ let myScript;
 console.log("Script loaded!");
 let jsonData = {};
 window.allVersions = [];
+const loadedVersions = {};
+let currentVersion;
 
 async function selectVersion(version) {
     if (jsonData[version] !== undefined) {
@@ -18,6 +20,18 @@ function loadMyScript(version) {
       reject(`invalid version: ${version}`);
       return;
     }
+    if (loadedVersions[version]) {
+      const cached = loadedVersions[version];
+      window.encrypt = cached.encrypt;
+      window.decrypt = cached.decrypt;
+      window.cleanup = cached.cleanup;
+      currentVersion = version;
+      resolve();
+      return;
+    }
+    // clear globals so we can detect the new module's exports reliably
+    window.encrypt = undefined;
+    window.decrypt = undefined;
     if (myScript) {
         if (window.cleanup) {
           // allow script to clean up before unloading
@@ -30,11 +44,26 @@ function loadMyScript(version) {
     myScript.type = "module";
     myScript.src = jsonData[version];
     myScript.onload = () => {
-        if (encrypt && decrypt) {
-          resolve();
-        } else {
-          reject("Script didn't expose the right functions");
-        }
+        const start = performance.now();
+        const maxWaitMs = 1000;
+        const tick = () => {
+          if (window.encrypt && window.decrypt) {
+            loadedVersions[version] = {
+              encrypt: window.encrypt,
+              decrypt: window.decrypt,
+              cleanup: window.cleanup,
+            };
+            currentVersion = version;
+            resolve();
+            return;
+          }
+          if (performance.now() - start >= maxWaitMs) {
+            reject("Script didn't expose the right functions");
+            return;
+          }
+          setTimeout(tick, 10);
+        };
+        tick();
     };
     myScript.onerror = reject;
     document.head.appendChild(myScript);

@@ -1,5 +1,12 @@
-import {encodeBinaryString, decodeBinaryString, numToBits, bitsToNum, sha256ToOffset} from 'https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslator@main/helpers.js?force=1';
+let helper;
 
+if (window.location.href.includes("http://localhost:")) {
+  // dev; use local copy
+  helper = await import('./helpers.js');
+} else {
+  // use cdn version
+  helper = await import('https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslator@main/helpers.js?force=1');
+}
 
 const blockChars = (() => {
   const out = [];
@@ -79,7 +86,7 @@ function encode(text, key) {
       if (char.codePointAt(0) < 256) {
         // sign that char is packed in one byte
         buf += "0";
-        const encoded = numToBits(char.charCodeAt(0), 8);
+        const encoded = helper.numToBits(char.charCodeAt(0), 8);
         buf += encoded;
       } else {
         // sign that char is packed in 21 bits
@@ -93,12 +100,12 @@ function encode(text, key) {
     }
   }
   // now apply shift for encryption
-  const shift = sha256ToOffset(key, blockChars.length);
+  const shift = helper.sha256ToOffset(key, blockChars.length);
   const part1 = blockChars.slice(shift);
   const part2 = blockChars.slice(0, shift);
   // const shiftedChars = part1.concat(part2);
   const shiftedChars = blockChars;
-  const ret = encodeBinaryString(buf, shiftedChars);
+  const ret = helper.encodeBinaryString(buf, shiftedChars);
   return ret;
 }
 
@@ -117,7 +124,7 @@ async function decode(str, key) {
   // const part2 = blockChars.slice(0, shift);
   // const shiftedChars = part1.concat(part2);
   const shiftedChars = blockChars;
-  const bits = decodeBinaryString(str, shiftedChars);
+  const bits = helper.decodeBinaryString(str, shiftedChars);
 
 
   let result = "";
@@ -131,7 +138,7 @@ async function decode(str, key) {
       const charLen = bitToBool(bits[i]) ? 21 : 8;
       i++;
       // read charLen bits of code
-      result += String.fromCharCode(bitsToNum(bits.slice(i, i+charLen)));
+      result += String.fromCharCode(helper.bitsToNum(bits.slice(i, i+charLen)));
       i += charLen - 1;
     } else {
       // huffman encoding
