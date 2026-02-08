@@ -234,7 +234,8 @@ async function specialEncrypt(text, key) {
 }
 
 async function specialDecrypt(text, key) {
-  const version = decodeVersion(text[0]);
+  const version = getVersionScript(text[0]);
+  console.log("Using version", version)
   try {
     await loadMyScript(version);
   } catch {
@@ -265,7 +266,10 @@ async function liveEncodeFromInput() {
     encodedOutput.value = encoded;
     updateCharCount(encodedOutput, encodedCount);
     updateCompressionStats(src, encoded);
-  } finally {
+  } catch (e) {
+    console.error(e);
+  }
+  finally {
     _suppress = false;
   }
 }
@@ -299,8 +303,7 @@ const debouncedEncode = debounce(liveEncodeFromInput, 220);
 const debouncedDecode = debounce(liveDecodeFromEncoded, 220);
 
 // wire up two-way live conversion (only trigger when user edits the field)
-textInput.addEventListener('input', (ev) => {
-  if (document.activeElement !== textInput) return;
+textInput.addEventListener('input', () => {
   // update counter immediately so the UI reflects user typing (don't wait for debounce/encode)
   updateCharCount(textInput, inputCount);
   debouncedEncode();
@@ -308,8 +311,7 @@ textInput.addEventListener('input', (ev) => {
 // IME composition can delay the final `input` event — ensure counter updates when composition ends
 textInput.addEventListener('compositionend', () => updateCharCount(textInput, inputCount));
 
-encodedOutput.addEventListener('input', (ev) => {
-  if (document.activeElement !== encodedOutput) return;
+encodedOutput.addEventListener('input', () => {
   // update counter immediately for edits/pastes
   updateCharCount(encodedOutput, encodedCount);
   debouncedDecode();
