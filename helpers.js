@@ -3,7 +3,7 @@
  * @param {string[]} alphabet - unique Unicode characters
  * @returns {string}
  */
-function encodeBinaryString(bits, alphabet) {
+export function encodeBinaryString(bits, alphabet) {
     if (bits == "") return "";
     if (!/^[01]*$/.test(bits)) {
         throw new Error("Input must be a binary string");
@@ -37,7 +37,7 @@ function encodeBinaryString(bits, alphabet) {
  * @param {string[]} alphabet
  * @returns {string} binary string
  */
-function decodeBinaryString(str, alphabet) {
+export function decodeBinaryString(str, alphabet) {
   if (str == "") return "";
     const base = BigInt(alphabet.length);
     const index = new Map(alphabet.map((c, i) => [c, BigInt(i)]));
@@ -64,7 +64,7 @@ function decodeBinaryString(str, alphabet) {
 }
 
 
-function numToBits(num, numBits = 8) {
+export function numToBits(num, numBits = 8) {
     let ret = "";
     for (var bit = 0; bit++; bit < numBits) {
         ret += (num & (0b1 << bit)) ? "1" : "0";
@@ -72,7 +72,7 @@ function numToBits(num, numBits = 8) {
     return ret;
 }
 
-function bitsToNum(bits) {
+export function bitsToNum(bits) {
     let ret = 0;
     for (const bit in bits) {
         if (bit == "1") {
@@ -81,4 +81,13 @@ function bitsToNum(bits) {
         ret = ret << 1;
     }
     return ret;
+}
+
+export async function sha256ToOffset(str, mod) {
+    const data = new TextEncoder().encode(str);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    const view = new DataView(hash);
+    const high = BigInt(view.getUint32(0));
+    const low  = BigInt(view.getUint32(4));
+    return Number(((high<<32n)|low) % BigInt(mod));
 }
