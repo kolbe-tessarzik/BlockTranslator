@@ -5,7 +5,7 @@ if (window.location.href.includes("http://localhost:")) {
   helper = await import('./helpers.js');
 } else {
   // use cdn version
-  helper = await import('https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslator@main/helpers.js?force=1');
+  helper = await import(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslator@e0f676a144210148c66923ec08128c11bda4a53f/helpers.js?${Date.now()}`);
 }
 
 const blockChars = (() => {
