@@ -172,6 +172,8 @@ const originalSize = document.getElementById("originalSize");
 const encodedSize = document.getElementById("encodedSize");
 const compressionPercent = document.getElementById("compressionPercent");
 
+const recommendedVersion = "Kolbe 1.0.0";
+
 // small debounce helper to avoid flooding the encoder/decoder on fast typing
 function debounce(fn, ms = 250) {
   let t;
@@ -346,13 +348,20 @@ if (encodedOutput.value) {
 
 async function loadOptions() {
   console.log("Loading . . .");
+  let options = Array.from(versionDropdown.options);
   for (const name of window.allVersions) {
     if (name !== "Latest") {
       const option = document.createElement('option');
       option.value = name;
-      option.textContent = name;
-      versionDropdown.appendChild(option);
+      option.textContent = (name == recommendedVersion) ? (name + " (recommended)") : name;
+      options.push(option);
     }
+  }
+  options.sort();
+  options.reverse();
+  versionDropdown.innerHTML = "";
+  for (const option of options) {
+    versionDropdown.appendChild(option);
   }
   console.log("Loaded successfully");
 }
