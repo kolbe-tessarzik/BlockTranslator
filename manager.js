@@ -86,7 +86,7 @@ async function loadDataForCache(url) {
 async function loadStuff() {
   // &${Date.now()} is to bust cache
   console.log("Fetching versions . . .");
-  const response = await fetch(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslatorCrossVersion@main/versions.json?force=1&${Date.now()}`);
+  const response = await fetch(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslatorCrossVersion@main/versions.json?force=1&${Date.now()}`, {cache: "no-store"});
 
   jsonData = {...jsonData, ... (await response.json()) };
   window.allVersions = Array.from(Object.keys(jsonData));
