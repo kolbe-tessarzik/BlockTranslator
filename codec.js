@@ -1,6 +1,5 @@
 import {encodeBinaryString, decodeBinaryString, numToBits, bitsToNum, sha256ToOffset} from 'https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslator@main/helpers.js?force=1';
 
-window.console.log = () => {};
 
 const blockChars = (() => {
   const out = [];
@@ -31,29 +30,48 @@ const blockChars = (() => {
 })();
 
 const huffmanCodes = [
-  "0",
-  "10",
-  "110",
-  "1110",
+  "0000",
+  "00010",
+  "00011",
+  "00100",
+  "00101",
+  "00110",
+  "00111",
+  "01000",
+  "01001",
+  "01010",
+  "01011",
+  "01100",
+  "01101",
+  "01110",
+  "01111",
+  "10000",
+  "10001",
+  "10010",
+  "10011",
+  "10100",
+  "10101",
+  "10110",
+  "10111",
+  "11000",
+  "11001",
+  "11010",
+  "11011",
+  "11100",
+  "11101",
   "11110",
-  "111110",
-  "1111110",
-  "11111110",
-  "111111110",
-  "1111111110",
-  "1111111111",
+  "11111",
 ];
 
 const huffmanChars = [
-  ' ',  // most frequent
-  'e', 't', 'a', 'o', 'i', 'n', 's', 'h', 'r', '\n'
+  ' ', 'e', 't', '\n', 'a', 'o', 'i', 'n', 's', 'h', 'r', 'd', 'l', 'c', 'u', 'm', 'w',
+  'f', 'g', 'y', 'p', 'b', 'v', 'k', 'j', 'x', 'q', 'z', ".", "!", "?"
 ];
 
 function encode(text, key) {
   console.log("Encoding . . .");
   let buf = "";
   for (const char of text) {
-    console.log(`Hit char ${char}`);
     const index = huffmanChars.indexOf(char);
     if (index === -1) {
       // not in compression index, encode literally
@@ -62,7 +80,6 @@ function encode(text, key) {
         // sign that char is packed in one byte
         buf += "0";
         const encoded = numToBits(char.charCodeAt(0), 8);
-        console.log(`Encoding ${char} literally: ${encoded}`);
         buf += encoded;
       } else {
         // sign that char is packed in 21 bits
@@ -70,11 +87,9 @@ function encode(text, key) {
         buf += numToBits(char.codePointAt(0), 21);
       }
     } else {
-      console.log(`Found ${char} at index ${index}, encoding with code ${huffmanCodes[index]}`);
       // encode with huffman
       buf += "1";
       buf += huffmanCodes[index];
-      console.log(`Current buffer: ${buf}`);
     }
   }
   // now apply shift for encryption
@@ -84,7 +99,6 @@ function encode(text, key) {
   // const shiftedChars = part1.concat(part2);
   const shiftedChars = blockChars;
   const ret = encodeBinaryString(buf, shiftedChars);
-  console.log("Complete!:", buf);
   return ret;
 }
 
@@ -97,7 +111,6 @@ function bitToBool(char) {
 }
 
 async function decode(str, key) {
-  console.log("Hello world");
   // apply shift for decryption
   // const shift = await sha256ToOffset(key, blockChars.length);
   // const part1 = blockChars.slice(shift);
@@ -105,18 +118,13 @@ async function decode(str, key) {
   // const shiftedChars = part1.concat(part2);
   const shiftedChars = blockChars;
   const bits = decodeBinaryString(str, shiftedChars);
-  console.log("Starting buffer:", bits);
 
-  console.log(bits);
 
   let result = "";
 
-  console.log(bits.length);
 
   for (var i = 0; i < bits.length; i++) {
-    console.log("Running loop");
     const isHuffman = bitToBool(bits[i]);
-    console.log(`isHuffman: ${isHuffman}`);
     if (!isHuffman) {
       i++;
       // literal encoding
@@ -135,7 +143,6 @@ async function decode(str, key) {
       result += huffmanChars[huffmanCodes.indexOf(readHuffmanBits)];
     }
   }
-  console.log(result);
   return result;
 }
 
