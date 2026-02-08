@@ -59,7 +59,7 @@ async function loadStuff() {
   console.log("Fetching versions . . .");
   const response = await fetch(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslatorCrossVersion@main/versions.json?force=1&${Date.now()}`);
 
-  jsonData = {...jsonData, ... JSON.parse(await response.text()) };
+  jsonData = {...jsonData, ... (await response.json()) };
   window.allVersions = Array.from(Object.keys(jsonData));
   for (const ver of window.allVersions) {
     // don't await, the point is just to cache for faster loading in the future
