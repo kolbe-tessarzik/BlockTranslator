@@ -10,1829 +10,449 @@ if (window.location.href.includes("http://localhost:")) {
   helper = await import(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslator@e0f676a144210148c66923ec08128c11bda4a53f/helpers.js?${Date.now()}`);
 }
 
-const blockChars = (() => {
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+/* --- CONFIGURATION --- */
+const STATIC_DICT = [
+  " the "," and "," to "," of "," in "," that "," is "," for ",
+  "ing","tion","ion","ed ","ly ","er ","re ","on ","th","he","in","er"
+].sort((a,b)=>b.length-a.length);
+
+const MIN_MATCH = 4;
+const MAX_MATCH = 10;
+const MIN_OCCURRENCE = 2;
+const MAX_DICT_ENTRIES = 200; // keep <=254 so token indices fit in one byte
+const ESC = 0xFF; // escape marker for tokens (safe in UTF-8 byte stream)
+
+/* --- BLOCK_CHARS / keyed alphabet --- */
+let BLOCK_CHARS = null;
+function buildBlockChars() {
+  if (BLOCK_CHARS) return BLOCK_CHARS;
   const out = [];
-
-  for (let cp = 0x21; cp <= 0x10FFFF; cp++) {
-    // skip surrogates
-    if (cp >= 0xD800 && cp <= 0xDFFF) continue;
-
+  const reCcCf = /[\p{Cc}\p{Cf}]/u;
+  const reMnMe = /\p{Mn}|\p{Me}/u;
+  for (let cp = 0x21; cp <= 0xFFFD; cp++) {
+    if (cp >= 0xD800 && cp <= 0xDFFF) { cp = 0xDFFF; continue; }
     try {
       const ch = String.fromCodePoint(cp);
-
-      // reject whitespace
       if (/\s/.test(ch)) continue;
-
-      // reject control / format
-      if (/[\p{Cc}\p{Cf}]/u.test(ch)) continue;
-
-      // reject combining marks
-      if (/\p{Mn}|\p{Me}/u.test(ch)) continue;
-
+      if (reCcCf.test(ch)) continue;
+      if (reMnMe.test(ch)) continue;
       out.push(ch);
     } catch (e) {
-      // some codepoints may throw in older environments — ignore
+      // ignore invalid codepoints
     }
   }
-
-  return out;
-})();
-
-const huffmanCodes = [
-    "1101",
-    "0000",
-    "10101",
-    "10011",
-    "01110",
-    "01001",
-    "00101",
-    "111110",
-    "111001",
-    "110011",
-    "100101",
-    "011000",
-    "010110",
-    "010000",
-    "000111",
-    "1111011",
-    "1110100",
-    "1011111",
-    "1011011",
-    "1000011",
-    "1000001",
-    "0011101",
-    "0010011",
-    "0001100",
-    "11111101",
-    "11101101",
-    "11000110",
-    "10001010",
-    "01101101",
-    "1100000010",
-    "11110101100",
-    "10111000011",
-    "00100000101",
-    "100100111110",
-    "011011100000",
-    "001110011101",
-    "01101110000101",
-    "111100000110111",
-    "00111111001000",
-    "00111111001001",
-    "00111111001010",
-    "101110100000001",
-    "001111110010111",
-    "011111100100100",
-    "1100000000011100",
-    "11000000000111010",
-    "010100",
-    "1111001",
-    "1100100",
-    "1011110",
-    "1000000",
-    "0111110",
-    "0111100",
-    "0110011",
-    "0110100",
-    "0110010",
-    "0101110",
-    "0001001",
-    "11110100",
-    "11101111",
-    "11100000",
-    "11000010",
-    "11000001",
-    "10111011",
-    "10111001",
-    "10110101",
-    "10110100",
-    "10110010",
-    "10100101",
-    "10100010",
-    "10100000",
-    "10010000",
-    "10001110",
-    "10001000",
-    "10000100",
-    "01111011",
-    "01101100",
-    "01101010",
-    "01010101",
-    "01010110",
-    "01000111",
-    "01000100",
-    "00111101",
-    "00111100",
-    "00110111",
-    "00111000",
-    "00110011",
-    "00110100",
-    "00100101",
-    "00100010",
-    "00100011",
-    "00100001",
-    "00011010",
-    "00010100",
-    "111111111",
-    "111100010",
-    "111100001",
-    "111011101",
-    "111011100",
-    "111010100",
-    "111000111",
-    "111000110",
-    "111000100",
-    "111000010",
-    "110010111",
-    "110010100",
-    "110001111",
-    "110001110",
-    "110000111",
-    "110001000",
-    "110000110",
-    "101100000",
-    "101100001",
-    "101100010",
-    "101001110",
-    "101001101",
-    "101001100",
-    "101001000",
-    "101000111",
-    "101000011",
-    "101000010",
-    "100100110",
-    "100100100",
-    "100011001",
-    "100001011",
-    "100001010",
-    "011111111",
-    "011011111",
-    "010111110",
-    "010111100",
-    "010111101",
-    "010101000",
-    "010001011",
-    "001111111",
-    "001101101",
-    "001101011",
-    "001100011",
-    "001100100",
-    "001100101",
-    "001001001",
-    "001001000",
-    "001000000",
-    "000101111",
-    "000110110",
-    "000110111",
-    "000101011",
-    "000101100",
-    "000100000",
-    "000100001",
-    "1111111100",
-    "1111111010",
-    "1111110010",
-    "1111110011",
-    "1111111000",
-    "1111010111",
-    "1111110000",
-    "1111000111",
-    "1111000000",
-    "1110110010",
-    "1110101010",
-    "1100101010",
-    "1100000011",
-    "1100000001",
-    "1011101001",
-    "1011100010",
-    "1011100011",
-    "1011001110",
-    "1011001111",
-    "1011100000",
-    "1011000111",
-    "1010011111",
-    "1001001010",
-    "1001001011",
-    "1001000110",
-    "1001000111",
-    "1000111110",
-    "1000111111",
-    "1000111100",
-    "1000111101",
-    "1000110100",
-    "1000110101",
-    "1000101111",
-    "1000110000",
-    "1000100101",
-    "1000100110",
-    "1000100111",
-    "1000101100",
-    "1000100100",
-    "0111111010",
-    "0111111011",
-    "0111111100",
-    "0111111000",
-    "0111101000",
-    "0111101001",
-    "0110111001",
-    "0110111010",
-    "0110111011",
-    "0110101110",
-    "0110101111",
-    "0101111110",
-    "0101111111",
-    "0110101100",
-    "0101011101",
-    "0101011100",
-    "0101010010",
-    "0100010101",
-    "0011111101",
-    "0100010100",
-    "0011111000",
-    "0011111001",
-    "0011111010",
-    "0011111011",
-    "0011011001",
-    "0011100100",
-    "0011100101",
-    "0011100110",
-    "0011000101",
-    "0011010100",
-    "0011000001",
-    "0011000010",
-    "0011000011",
-    "0010000011",
-    "0001010101",
-    "0001011010",
-    "0001000101",
-    "0001000110",
-    "0001000111",
-    "0001010100",
-    "11111110111",
-    "11111110011",
-    "11110101101",
-    "11111100010",
-    "11110101001",
-    "11110101010",
-    "11110101011",
-    "11110001100",
-    "11110001101",
-    "11110101000",
-    "11101100111",
-    "11110000010",
-    "11101010110",
-    "11101010111",
-    "11101011000",
-    "11101011001",
-    "11101011010",
-    "11100001100",
-    "11100001101",
-    "11100001110",
-    "11100001111",
-    "11100010100",
-    "11100010101",
-    "11000101111",
-    "11000100100",
-    "11000100101",
-    "11000100110",
-    "11000100111",
-    "11000101000",
-    "11000101001",
-    "11000101010",
-    "11000000001",
-    "10111010001",
-    "10111010100",
-    "10111010101",
-    "10110011011",
-    "10111000010",
-    "10110001101",
-    "10110011000",
-    "10110011001",
-    "10100100110",
-    "10100100111",
-    "10100111100",
-    "10100111101",
-    "10100011000",
-    "10010011110",
-    "10010011100",
-    "10010001000",
-    "10010001001",
-    "10010001010",
-    "10001011010",
-    "10001011011",
-    "10001011100",
-    "10001011101",
-    "10001100010",
-    "01111010100",
-    "01111010101",
-    "01111010110",
-    "01111010111",
-    "01101011010",
-    "01101011011",
-    "01010111100",
-    "01010100110",
-    "01000110000",
-    "01000110001",
-    "00111001111",
-    "00111111000",
-    "00110001001",
-    "00110101010",
-    "00110101011",
-    "00110000000",
-    "00110000001",
-    "00110001000",
-    "00010110110",
-    "00010110111",
-    "00010111000",
-    "111111101101",
-    "111111110100",
-    "111111110101",
-    "111111110110",
-    "111111110111",
-    "00010001000",
-    "111111000110",
-    "111111000111",
-    "111100000111",
-    "111000101111",
-    "111010110110",
-    "111010110111",
-    "111010111000",
-    "111010111001",
-    "111010111010",
-    "111010111011",
-    "111000101100",
-    "111000101101",
-    "110010101101",
-    "110010101110",
-    "110010101111",
-    "110010110000",
-    "110010110001",
-    "110010110010",
-    "110010110011",
-    "110010110100",
-    "110001010110",
-    "110001010111",
-    "110001011000",
-    "110001011001",
-    "110001011010",
-    "110001011011",
-    "110001011100",
-    "110001011101",
-    "110010101100",
-    "101110100001",
-    "101110101100",
-    "101100011001",
-    "101100110100",
-    "101100110101",
-    "100100111111",
-    "101000110010",
-    "101000110011",
-    "101000110100",
-    "101000110101",
-    "101000110110",
-    "101000110111",
-    "100100010111",
-    "100100111010",
-    "100011000110",
-    "011111100101",
-    "011111100110",
-    "011111100111",
-    "011111110100",
-    "011111110101",
-    "011111110110",
-    "011111110111",
-    "011011100010",
-    "011011100011",
-    "011011110000",
-    "011011110001",
-    "011011110010",
-    "011011110011",
-    "011011110100",
-    "011011110101",
-    "010101001111",
-    "010101111010",
-    "010101111011",
-    "010101111100",
-    "010101111101",
-    "010101111110",
-    "010101111111",
-    "001111110011",
-    "010001100100",
-    "010001100101",
-    "010001100110",
-    "010001100111",
-    "010001101000",
-    "010001101001",
-    "010001101010",
-    "001101100000",
-    "001101100001",
-    "001101100010",
-    "001101100011",
-    "001110011100",
-    "000100010011",
-    "000101110010",
-    "000101110011",
-    "000101110100",
-    "1111111001000",
-    "1111111001001",
-    "1111111001010",
-    "1111111001011",
-    "1111111011000",
-    "1111111011001",
-    "000100010010",
-    "1110001011101",
-    "1110101111000",
-    "1110101111001",
-    "1110101111010",
-    "1100101101010",
-    "1100101101011",
-    "1100101101100",
-    "1100101101101",
-    "1100101101110",
-    "1100101101111",
-    "1110001011100",
-    "1011101000001",
-    "1011101011010",
-    "1011101011011",
-    "1011101011100",
-    "1001001110111",
-    "1010010010000",
-    "1010010010001",
-    "1010010010010",
-    "1010010010011",
-    "1010010010100",
-    "1010010010101",
-    "1010010010110",
-    "1010010010111",
-    "1011000110000",
-    "1011000110001",
-    "1000110001110",
-    "1000110001111",
-    "1000110110000",
-    "1000110110001",
-    "1000110110010",
-    "1000110110011",
-    "0110111000011",
-    "0110111101100",
-    "0110111101101",
-    "0110111101110",
-    "0110111101111",
-    "0111111001000",
-    "0100011010110",
-    "0100011010111",
-    "0100011011000",
-    "0100011011001",
-    "0001011101010",
-    "0001011101011",
-    "0001011101100",
-    "0001011101101",
-    "0001011101110",
-    "0001011101111",
-    "0010000010000",
-    "0010000010001",
-    "0010000010010",
-    "0010000010011",
-    "11101011110110",
-    "11101011110111",
-    "11101011111000",
-    "11101011111001",
-    "11101011111010",
-    "11101011111011",
-    "11101011111100",
-    "11101011111101",
-    "11101011111110",
-    "11101011111111",
-    "11101100000000",
-    "11101100000001",
-    "11101100000010",
-    "10111010000001",
-    "10111010111010",
-    "10111010111011",
-    "10111010111100",
-    "10111010111101",
-    "10111010111110",
-    "10111010111111",
-    "11000000000000",
-    "11000000000001",
-    "11000000000010",
-    "11000000000011",
-    "11000000000100",
-    "11000000000101",
-    "11000000000110",
-    "01111110010011",
-    "10001101101000",
-    "10001101101001",
-    "10001101101010",
-    "10001101101011",
-    "10001101101100",
-    "10001101101101",
-    "10001101101110",
-    "10001101101111",
-    "10001101110000",
-    "10001101110001",
-    "10001101110010",
-    "10001101110011",
-    "10001101110100",
-    "01000110110100",
-    "01000110110101",
-    "01000110110110",
-    "01000110110111",
-    "01000110111000",
-    "01000110111001",
-    "01000110111010",
-    "01000110111011",
-    "01000110111100",
-    "01000110111101",
-    "01000110111110",
-    "01000110111111",
-    "01010100111000",
-    "01010100111001",
-    "01010100111010",
-    "01010100111011",
-    "01101110000100",
-    "110000000001111",
-    "111011000000110",
-    "111011000000111",
-    "111011000001000",
-    "111011000001001",
-    "111011000001010",
-    "111011000001011",
-    "111011000001100",
-    "111011000001101",
-    "111011000001110",
-    "111011000001111",
-    "111011000010000",
-    "111011000010001",
-    "111011000010010",
-    "111011000010011",
-    "111011000010100",
-    "111011000010101",
-    "111011000010110",
-    "111011000010111",
-    "111011000011000",
-    "111011000011001",
-    "011111100100101",
-    "100011011101010",
-    "100011011101011",
-    "100011011101100",
-    "100011011101101",
-    "100011011101110",
-    "100011011101111",
-    "100011011110000",
-    "100011011110001",
-    "100011011110010",
-    "100011011110011",
-    "100011011110100",
-    "100011011110101",
-    "100011011110110",
-    "100011011110111",
-    "100011011111000",
-    "100011011111001",
-    "100011011111010",
-    "100011011111011",
-    "100011011111100",
-    "100011011111101",
-    "100011011111110",
-    "100011011111111",
-    "100100010110000",
-    "100100010110001",
-    "100100010110010",
-    "100100010110011",
-    "100100010110100",
-    "100100010110101",
-    "100100010110110",
-    "100100010110111",
-    "100100111011000",
-    "100100111011001",
-    "100100111011010",
-    "100100111011011",
-    "101110100000000",
-    "1110110000110100",
-    "1110110000110101",
-    "1110110000110110",
-    "1110110000110111",
-    "1110110000111000",
-    "1110110000111001",
-    "1110110000111010",
-    "1110110000111011",
-    "1110110000111100",
-    "1110110000111101",
-    "1110110000111110",
-    "1110110000111111",
-    "1110110001000000",
-    "1110110001000001",
-    "1110110001000010",
-    "1110110001000011",
-    "1110110001000100",
-    "1110110001000101",
-    "1110110001000110",
-    "1110110001000111",
-    "1110110001001000",
-    "1110110001001001",
-    "1110110001001010",
-    "1110110001001011",
-    "1110110001001100",
-    "1110110001001101",
-    "1110110001001110",
-    "1110110001001111",
-    "1110110001010000",
-    "1110110001010001",
-    "1110110001010010",
-    "1110110001010011",
-    "1110110001010100",
-    "1110110001010101",
-    "1110110001010110",
-    "1110110001010111",
-    "1110110001011000",
-    "1110110001011001",
-    "1110110001011010",
-    "1110110001011011",
-    "1110110001011100",
-    "1110110001011101",
-    "1110110001011110",
-    "1110110001011111",
-    "1110110001100000",
-    "1110110001100001",
-    "1110110001100010",
-    "1110110001100011",
-    "1110110001100100",
-    "1110110001100101",
-    "1110110001100110",
-    "1110110001100111",
-    "1110110001101000",
-    "1110110001101001",
-    "1110110001101010",
-    "1110110001101011",
-    "1110110001101100",
-    "1110110001101101",
-    "11000000000111011",
-    "11101100011011100",
-    "11101100011011101",
-    "11101100011011110",
-    "11101100011011111",
-    "11101100011100000",
-    "11101100011100001",
-    "11101100011100010",
-    "11101100011100011",
-    "11101100011100100",
-    "11101100011100101",
-    "11101100011100110",
-    "11101100011100111",
-    "11101100011101000",
-    "11101100011101001",
-    "11101100011101010",
-    "11101100011101011",
-    "11101100011101100",
-    "11101100011101101",
-    "11101100011101110",
-    "11101100011101111",
-    "11101100011110000",
-    "11101100011110001",
-    "11101100011110010",
-    "11101100011110011",
-    "11101100011110100",
-    "11101100011110101",
-    "11101100011110110",
-    "11101100011110111",
-    "11101100011111000",
-    "11101100011111001",
-    "11101100011111010",
-    "11101100011111011",
-    "11101100011111100",
-    "11101100011111101",
-    "11101100011111110",
-    "11101100011111111",
-    "11101100110000000",
-    "11101100110000001",
-    "11101100110000010",
-    "11101100110000011",
-    "11101100110000100",
-    "11101100110000101",
-    "11101100110000110",
-    "11101100110000111",
-    "11101100110001000",
-    "11101100110001001",
-    "11101100110001010",
-    "11101100110001011",
-    "11101100110001100",
-    "11101100110001101",
-    "11101100110001110",
-    "11101100110001111",
-    "11101100110010000",
-    "11101100110010001",
-    "11101100110010010",
-    "11101100110010011",
-    "11101100110010100",
-    "11101100110010101",
-    "11101100110010110",
-    "11101100110010111",
-    "11101100110011000",
-    "11101100110011001",
-    "11101100110011010",
-    "11101100110011011",
-    "11101100110011100",
-    "11101100110011101",
-    "11101100110011110",
-    "11101100110011111",
-    "11101100110100000",
-    "11101100110100001",
-    "11101100110100010",
-    "11101100110100011",
-    "11101100110100100",
-    "11101100110100101",
-    "11101100110100110",
-    "11101100110100111",
-    "11101100110101000",
-    "11101100110101001",
-    "11101100110101010",
-    "11101100110101011",
-    "11101100110101100",
-    "11101100110101101",
-    "11101100110101110",
-    "11101100110101111",
-    "11101100110110000",
-    "11101100110110001",
-    "11101100110110010",
-    "11101100110110011",
-    "11101100110110100",
-    "11101100110110101",
-    "11101100110110110",
-    "11101100110110111",
-    "11101100110111000",
-    "11101100110111001",
-    "11101100110111010",
-    "11101100110111011",
-    "11101100110111100",
-    "11101100110111101",
-    "11101100110111110",
-    "11101100110111111",
-    "11110000011000000",
-    "11110000011000001",
-    "11110000011000010",
-    "11110000011000011",
-    "11110000011000100",
-    "11110000011000101",
-    "11110000011000110",
-    "11110000011000111",
-    "11110000011001000",
-    "11110000011001001",
-    "11110000011001010",
-    "11110000011001011",
-    "11110000011001100",
-    "11110000011001101",
-    "11110000011001110",
-    "11110000011001111",
-    "11110000011010000",
-    "11110000011010001",
-    "11110000011010010",
-    "11110000011010011",
-    "11110000011010100",
-    "11110000011010101",
-    "11110000011010110",
-    "11110000011010111",
-    "11110000011011000",
-    "11110000011011001",
-    "11110000011011010",
-    "11110000011011011",
-    "0011111100101100",
-    "0011111100101101"
-];
-
-const huffmanTokens = [
-    " ",
-    "e",
-    "t",
-    "o",
-    "a",
-    "i",
-    "n",
-    "s",
-    "h",
-    "r",
-    "l",
-    "\n",
-    "u",
-    "y",
-    ".",
-    "d",
-    "w",
-    "m",
-    "g",
-    "c",
-    "b",
-    "f",
-    "'",
-    ",",
-    "k",
-    "p",
-    "!",
-    "v",
-    "?",
-    "j",
-    "z",
-    "-",
-    "x",
-    "q",
-    "\"",
-    "0",
-    "1",
-    "2",
-    "3",
-    "5",
-    "7",
-    "8",
-    "4",
-    "9",
-    ":",
-    "6",
-    "e ",
-    " t",
-    "th",
-    "t ",
-    ".\n",
-    "s ",
-    "ou",
-    "he",
-    "in",
-    " a",
-    " i",
-    ", ",
-    "re",
-    " w",
-    " b",
-    "an",
-    "on",
-    "er",
-    "ha",
-    " s",
-    " h",
-    "at",
-    "yo",
-    " o",
-    "ng",
-    "it",
-    "d ",
-    "y ",
-    "o ",
-    " y",
-    "n ",
-    "!\n",
-    ". ",
-    "be",
-    "ll",
-    "is",
-    "es",
-    " m",
-    " c",
-    "to",
-    " d",
-    "r ",
-    "hi",
-    "a ",
-    "ee",
-    "ve",
-    "ar",
-    "st",
-    " f",
-    "?\n",
-    "ne",
-    "al",
-    "g ",
-    "en",
-    "ea",
-    "or",
-    "no",
-    " g",
-    "we",
-    " l",
-    "i ",
-    "u ",
-    "ho",
-    "ow",
-    "me",
-    "'s",
-    "l ",
-    "ur",
-    "wh",
-    "le",
-    "\ni",
-    "e.",
-    " n",
-    "nd",
-    "se",
-    "do",
-    " p",
-    "li",
-    "ti",
-    "lo",
-    "te",
-    "ot",
-    "f ",
-    "\nw",
-    "ma",
-    "ut",
-    "\nt",
-    "as",
-    "co",
-    "of",
-    " r",
-    "el",
-    "ry",
-    "n'",
-    "ey",
-    "t.",
-    "go",
-    "om",
-    "us",
-    "'t",
-    "nt",
-    "ca",
-    "ri",
-    "wa",
-    "m ",
-    "ke",
-    "t'",
-    "ta",
-    "et",
-    "ro",
-    "so",
-    "s.",
-    "\ny",
-    "de",
-    "! ",
-    "ed",
-    "k ",
-    " k",
-    "ad",
-    "w ",
-    "av",
-    "i'",
-    "oo",
-    "la",
-    "ki",
-    "ay",
-    "ul",
-    "e'",
-    "ld",
-    " j",
-    "..",
-    "ck",
-    "h ",
-    "\nh",
-    "mo",
-    "e!",
-    "ge",
-    "gh",
-    "wi",
-    "wo",
-    "ye",
-    " e",
-    "ly",
-    "rr",
-    "rs",
-    "ch",
-    "\na",
-    "ra",
-    "ic",
-    "ol",
-    "tt",
-    "ba",
-    "fl",
-    "ig",
-    "os",
-    "y.",
-    "'r",
-    "ns",
-    "s!",
-    "'m",
-    "ev",
-    "s,",
-    "\nb",
-    "ce",
-    "ec",
-    "pe",
-    "bu",
-    "fo",
-    "ht",
-    "ie",
-    "il",
-    "y,",
-    "di",
-    "e?",
-    "na",
-    "nk",
-    "am",
-    "bo",
-    "ac",
-    "io",
-    "po",
-    "un",
-    "ss",
-    "\ns",
-    "bl",
-    "kn",
-    " u",
-    "id",
-    "n.",
-    "ak",
-    "e,",
-    "sh",
-    "ai",
-    "if",
-    "d.",
-    "em",
-    "ir",
-    "sa",
-    "si",
-    "? ",
-    "fe",
-    "ju",
-    "od",
-    "rt",
-    "su",
-    "p ",
-    "\no",
-    "g.",
-    "im",
-    "ni",
-    "t!",
-    "t?",
-    "tr",
-    "up",
-    "hu",
-    "pl",
-    "um",
-    "my",
-    "r.",
-    "fr",
-    "iv",
-    "mi",
-    "ab",
-    "da",
-    "oi",
-    "ok",
-    "u'",
-    "ct",
-    "tu",
-    "h,",
-    "pa",
-    "rd",
-    "\nn",
-    "nc",
-    "op",
-    "s?",
-    "t,",
-    "\nm",
-    "fi",
-    "n,",
-    "pr",
-    "ap",
-    "pi",
-    "ik",
-    "ny",
-    "ov",
-    "ug",
-    " v",
-    "ci",
-    "gr",
-    "nn",
-    "y!",
-    "gi",
-    "k.",
-    "o.",
-    "ff",
-    "gu",
-    "vi",
-    "fa",
-    "jo",
-    "l.",
-    "oh",
-    "ts",
-    "va",
-    "rk",
-    "tl",
-    "ob",
-    "\nc",
-    "ah",
-    "dy",
-    "ia",
-    "lk",
-    "n!",
-    "sp",
-    "cr",
-    "w.",
-    "\nl",
-    "br",
-    "hy",
-    "n?",
-    "o,",
-    "rn",
-    "sn",
-    "y'",
-    "'l",
-    "ep",
-    "ex",
-    "fu",
-    "r,",
-    "r!",
-    "sm",
-    "uc",
-    "ue",
-    "au",
-    "mp",
-    "ew",
-    "ga",
-    "y?",
-    "\nd",
-    "'v",
-    "ag",
-    "h.",
-    "oc",
-    "pp",
-    "qu",
-    "mu",
-    "wn",
-    "ds",
-    "?!",
-    "dr",
-    "l,",
-    "rm",
-    "sc",
-    "ty",
-    "ua",
-    "aw",
-    "g?",
-    "gs",
-    "lu",
-    "mb",
-    "yb",
-    "ys",
-    "zz",
-    "\nr",
-    "cu",
-    "ks",
-    "ls",
-    "oe",
-    "p.",
-    "ui",
-    "\ng",
-    "bi",
-    "cl",
-    "eg",
-    "k,",
-    "mr",
-    "rl",
-    "uz",
-    "d,",
-    "dn",
-    "ei",
-    "m.",
-    "og",
-    "af",
-    "az",
-    "by",
-    "nl",
-    "du",
-    "ef",
-    "g,",
-    "pu",
-    "ru",
-    "w,",
-    "yi",
-    "b ",
-    "g!",
-    "hr",
-    "oy",
-    "'d",
-    "e-",
-    "lt",
-    "r?",
-    "u.",
-    "w!",
-    "yt",
-    "\nv",
-    "a,",
-    "tw",
-    "ud",
-    "\nf",
-    "\np",
-    " q",
-    "eo",
-    "ip",
-    "lp",
-    "m!",
-    "nu",
-    "ps",
-    "sk",
-    "tc",
-    "ft",
-    "m,",
-    "oa",
-    "u?",
-    "uy",
-    "ws",
-    "a.",
-    "ms",
-    "rc",
-    "sl",
-    "u,",
-    "zy",
-    "\nk",
-    "lm",
-    "o!",
-    "yw",
-    "\nj",
-    "d!",
-    "d?",
-    "ek",
-    "mm",
-    "o?",
-    "pt",
-    "sq",
-    "sy",
-    "z,",
-    " \"",
-    "-b",
-    ",\n",
-    "00",
-    "b.",
-    "c ",
-    "ib",
-    "je",
-    "k!",
-    "rg",
-    "sw",
-    "ub",
-    "vo",
-    "-a",
-    "a!",
-    "bs",
-    "gl",
-    "ja",
-    "ky",
-    "l?",
-    "m?",
-    "p,",
-    "rp",
-    "rv",
-    "uf",
-    "xp",
-    "ze",
-    "\ne",
-    "0 ",
-    "dd",
-    "eh",
-    "h!",
-    "kr",
-    "lf",
-    "nf",
-    "p!",
-    "ph",
-    "tg",
-    "x ",
-    "xt",
-    "zi",
-    "\nu",
-    " 2",
-    "-f",
-    "\" ",
-    "a?",
-    "bb",
-    "c.",
-    "gn",
-    "h?",
-    "k?",
-    "nh",
-    "o'",
-    "py",
-    "rf",
-    "wr",
-    "xa",
-    "xc",
-    " '",
-    "-c",
-    "-o",
-    "-t",
-    "?\"",
-    "'a",
-    "d-",
-    "eb",
-    "f.",
-    "iz",
-    "ka",
-    "lw",
-    "n-",
-    "p-",
-    "r-",
-    "rw",
-    "w?",
-    "wy",
-    "y-",
-    "yc",
-    "ym",
-    "\n ",
-    "\n.",
-    "\n\"",
-    " 1",
-    " 3",
-    "-d",
-    "-m",
-    "-s",
-    ".\"",
-    "\"\n",
-    "27",
-    "30",
-    "a-",
-    "a'",
-    "c!",
-    "cc",
-    "dl",
-    "dv",
-    "ez",
-    "h-",
-    "hn",
-    "i,",
-    "i?",
-    "i.",
-    "ix",
-    "ko",
-    "l-",
-    "l!",
-    "lc",
-    "nb",
-    "o-",
-    "rh",
-    "w'",
-    "ya",
-    "yd",
-    "z!",
-    " 0",
-    " 8",
-    "-e",
-    "-g",
-    "-i",
-    "-k",
-    "-y",
-    "!!",
-    ".i",
-    "' ",
-    "'c",
-    "\"?",
-    "\"t",
-    "\"w",
-    "09",
-    "10",
-    "5.",
-    "7 ",
-    "75",
-    "90",
-    "ae",
-    "ax",
-    "c?",
-    "cs",
-    "cy",
-    "d'",
-    "db",
-    "df",
-    "dm",
-    "e\n",
-    "f?",
-    "fk",
-    "gg",
-    "hl",
-    "hm",
-    "i-",
-    "jf",
-    "kl",
-    "kw",
-    "lr",
-    "m-",
-    "nj",
-    "ox",
-    "p?",
-    "t-",
-    "td",
-    "tn",
-    "tv",
-    "u!",
-    "uh",
-    "v?",
-    "wf",
-    "x,",
-    "xi",
-    "z ",
-    "z.",
-    "za",
-    "zw",
-    "\n3",
-    "\nq",
-    "  ",
-    " 4",
-    " 7",
-    " 9",
-    "-8",
-    "-h",
-    "-l",
-    "-n",
-    "-p",
-    ",\"",
-    ",0",
-    ",h",
-    ": ",
-    ":1",
-    ".?",
-    ".a",
-    ".r",
-    ".u",
-    "'e",
-    "'n",
-    "\"!",
-    "\"d",
-    "\"e",
-    "\"h",
-    "\"i",
-    "\"m",
-    "\"s",
-    "\"y",
-    "0!",
-    "0.",
-    "05",
-    "0s",
-    "1.",
-    "11",
-    "15",
-    "18",
-    "20",
-    "24",
-    "35",
-    "3r",
-    "44",
-    "47",
-    "4b",
-    "5 ",
-    "5,",
-    "56",
-    "6.",
-    "7-",
-    "8,",
-    "80",
-    "81",
-    "83",
-    "9:",
-    "aj",
-    "b,",
-    "b!",
-    "b'",
-    "bj",
-    "bv",
-    "d\n",
-    "dg",
-    "dh",
-    "dj",
-    "dw",
-    "ej",
-    "eq",
-    "eu",
-    "f!",
-    "f'",
-    "fc",
-    "fs",
-    "g'",
-    "g\"",
-    "gd",
-    "gt",
-    "gy",
-    "hh",
-    "hs",
-    "i!",
-    "iu",
-    "j-",
-    "k'",
-    "kb",
-    "kf",
-    "kh",
-    "kp",
-    "kt",
-    "l'",
-    "lv",
-    "m'",
-    "ml",
-    "mn",
-    "n:",
-    "np",
-    "nr",
-    "nv",
-    "nw",
-    "nx",
-    "oq",
-    "oz",
-    "r'",
-    "rb",
-    "rj",
-    "s\n",
-    "s-",
-    "s'",
-    "s\"",
-    "tb",
-    "tm",
-    "uj",
-    "uo",
-    "uq",
-    "v.",
-    "vy",
-    "w\n",
-    "wb",
-    "wd",
-    "wg",
-    "wk",
-    "wl",
-    "x!",
-    "x.",
-    "xe",
-    "xh",
-    "y\"",
-    "yn",
-    "yr",
-    "z?",
-    "zo"
-];
-
-const huffmanTokenMap = new Map(huffmanTokens.map((token, i) => [token, i]));
-const maxHuffmanTokenLen = huffmanTokens.reduce((max, token) => Math.max(max, token.length), 0);
-
-function buildHuffmanCodesFromFrequencies(items) {
-  if (!Array.isArray(items)) {
-    throw new Error("buildHuffmanCodesFromFrequencies expects an array");
-  }
-
-  const queue = items
-    .filter((it) => it && typeof it.token === "string" && Number.isFinite(it.weight) && it.weight > 0)
-    .map((it, i) => ({ token: it.token, weight: it.weight, order: i }));
-
-  if (queue.length === 0) {
-    return { tokens: [], codes: [] };
-  }
-
-  if (queue.length === 1) {
-    return { tokens: [queue[0].token], codes: ["0"] };
-  }
-
-  while (queue.length > 1) {
-    queue.sort((a, b) => a.weight - b.weight || a.order - b.order);
-    const left = queue.shift();
-    const right = queue.shift();
-    queue.push({
-      left,
-      right,
-      weight: left.weight + right.weight,
-      order: Math.min(left.order, right.order)
-    });
-  }
-
-  const root = queue[0];
-  const codeMap = new Map();
-  const walk = (node, prefix) => {
-    if (!node) return;
-    if (node.token !== undefined) {
-      codeMap.set(node.token, prefix || "0");
-      return;
-    }
-    walk(node.left, prefix + "0");
-    walk(node.right, prefix + "1");
-  };
-  walk(root, "");
-
-  return {
-    tokens: items.map((it) => it.token),
-    codes: items.map((it) => codeMap.get(it.token) || "")
-  };
-}
-
-function analyzeSampleText(sampleText, options = {}) {
-  const {
-    includeBigrams = true,
-    caseFold = true,
-    includeWhitespace = true,
-    includeNewlines = true,
-    normalizeForm = "NFC"
-  } = options;
-
-  let text = String(sampleText ?? "");
-  if (normalizeForm) text = text.normalize(normalizeForm);
-  if (caseFold) text = text.toLowerCase();
-
-  const chars = Array.from(text);
-  const isNewline = (ch) => ch === "\n" || ch === "\r";
-  const isWhitespace = (ch) => /\s/.test(ch);
-  const isAllowed = (ch) => {
-    if (!includeNewlines && isNewline(ch)) return false;
-    if (!includeWhitespace && isWhitespace(ch)) return false;
-    return true;
-  };
-
-  const letterCounts = new Map();
-  let totalLetters = 0;
-  for (const ch of chars) {
-    if (!isAllowed(ch)) continue;
-    letterCounts.set(ch, (letterCounts.get(ch) || 0) + 1);
-    totalLetters++;
-  }
-
-  const bigramCounts = new Map();
-  let totalBigrams = 0;
-  for (let i = 0; i < chars.length - 1; i++) {
-    const a = chars[i];
-    const b = chars[i + 1];
-    if (!isAllowed(a) || !isAllowed(b)) continue;
-    const bg = a + b;
-    bigramCounts.set(bg, (bigramCounts.get(bg) || 0) + 1);
-    totalBigrams++;
-  }
-
-  const sortByCount = (a, b) => b.count - a.count || a.token.localeCompare(b.token);
-  const letters = Array.from(letterCounts.entries())
-    .map(([token, count]) => ({ token, count, probability: totalLetters ? count / totalLetters : 0 }))
-    .sort(sortByCount);
-
-  const bigrams = Array.from(bigramCounts.entries())
-    .map(([token, count]) => ({ token, count, probability: totalBigrams ? count / totalBigrams : 0 }))
-    .sort(sortByCount);
-
-  const huffmanInput = (includeBigrams ? letters.concat(bigrams) : letters)
-    .map((entry, i) => ({ token: entry.token, weight: entry.count, order: i }));
-  const huffman = buildHuffmanCodesFromFrequencies(huffmanInput);
-
-  return { letters, bigrams, huffman };
-}
-
-function appendBits(buf, bits) {
-  if (typeof bits !== "string" || !/^[01]+$/.test(bits)) {
-    throw new Error(`Invalid bits '${bits}'`);
-  }
-  return buf + bits;
-}
-
-function bitsToByteArray(bits) {
-  if (bits === "") return new Uint8Array([0]);
-  const padding = (8 - (bits.length % 8)) % 8;
-  const padded = padding ? (bits + "0".repeat(padding)) : bits;
-  const bytes = new Uint8Array(1 + padded.length / 8);
-  bytes[0] = padding;
-  for (let i = 0; i < padded.length; i += 8) {
-    bytes[1 + i / 8] = parseInt(padded.slice(i, i + 8), 2);
-  }
-  return bytes;
-}
-
-function byteArrayToBits(bytes) {
-  if (bytes.length === 0) return "";
-  const padding = bytes[0];
-  let bits = "";
-  for (let i = 1; i < bytes.length; i++) {
-    bits += helper.numToBits(bytes[i], 8);
-  }
-  return padding ? bits.slice(0, -padding) : bits;
-}
-
-function bytesToBits(bytes) {
-  let bits = "";
-  for (const byte of bytes) {
-    bits += helper.numToBits(byte, 8);
-  }
-  return bits;
-}
-
-function bitsToBytesExact(bits) {
-  if (bits.length % 8 !== 0) {
-    throw new Error("Compressed bitstream is not byte-aligned");
-  }
-  const out = new Uint8Array(bits.length / 8);
-  for (let i = 0; i < bits.length; i += 8) {
-    out[i / 8] = parseInt(bits.slice(i, i + 8), 2);
-  }
+  BLOCK_CHARS = out;
   return out;
 }
 
-async function gzipCompressBytes(bytes) {
-  return pako.gzip(bytes);
+async function getKeyedChars(key) {
+  if (!BLOCK_CHARS) BLOCK_CHARS = buildBlockChars();
+  if (!key) return BLOCK_CHARS;
+  const off = await helper.sha256ToOffset(key, BLOCK_CHARS.length);
+  return BLOCK_CHARS.slice(off).concat(BLOCK_CHARS.slice(0, off));
 }
 
-async function gzipDecompressBytes(bytes) {
-  return pako.ungzip(bytes);
+/* --- Dynamic dictionary (digger) --- */
+function findCandidates(text, sampleLimit = 200000) {
+  const s = (text.length > sampleLimit) ? text.slice(0, sampleLimit) : text;
+  const counts = new Map();
+
+  for (let L = MIN_MATCH; L <= MAX_MATCH; L++) {
+    const seen = new Map();
+    for (let i = 0; i + L <= s.length; i++) {
+      const sub = s.slice(i, i + L);
+      const v = (seen.get(sub) || 0) + 1;
+      seen.set(sub, v);
+    }
+    for (const [sub, cnt] of seen.entries()) {
+      if (cnt >= MIN_OCCURRENCE) {
+        counts.set(sub, (counts.get(sub) || 0) + cnt);
+      }
+    }
+  }
+
+  const candidates = [];
+  for (const [sub, cnt] of counts.entries()) {
+    const len = sub.length;
+    const savingPer = len - 3; // ESC + 1-byte index (3 bytes)
+    const estSavings = cnt * savingPer - (2 + len); // dict storage cost
+    if (estSavings > 0) candidates.push({ sub, cnt, len, estSavings });
+  }
+
+  candidates.sort((a,b)=>b.estSavings - a.estSavings);
+  return candidates.slice(0, MAX_DICT_ENTRIES);
 }
 
-async function encode(text, key) {
-  console.log("Encoding . . .");
-  let buf = "";
-  const chars = Array.from(text);
-  for (let i = 0; i < chars.length; i++) {
+function buildDynamicDict(text) {
+  const candidates = findCandidates(text);
+  const dict = candidates.map(c => c.sub);
+  const merged = dict.concat(STATIC_DICT.filter(s => !dict.includes(s)));
+  return merged.slice(0, 254);
+}
+
+/* --- Tokenize / detokenize using ESC + single-byte index --- */
+function tokenizeWithDict(str, dict) {
+  const out = [];
+  let i = 0;
+  while (i < str.length) {
     let matched = false;
-    const maxLen = Math.min(maxHuffmanTokenLen, chars.length - i);
-
-    for (let len = maxLen; len >= 1; len--) {
-      const token = chars.slice(i, i + len).join("");
-      const index = huffmanTokenMap.get(token);
-      if (index !== undefined) {
-        // encode with huffman (token can be multi-char)
-        buf = appendBits(buf, "1");
-        const code = huffmanCodes[index];
-        if (code === undefined) {
-          throw new Error(`Missing Huffman code for token '${token}'`);
-        }
-        buf = appendBits(buf, code);
-        i += len - 1;
+    for (let j = 0; j < dict.length; j++) {
+      const d = dict[j];
+      if (str.startsWith(d, i)) {
+        out.push(ESC, j);
+        i += d.length;
         matched = true;
         break;
       }
     }
-
     if (matched) continue;
-
-    const char = chars[i];
-    // not in compression index, encode literally
-    buf = appendBits(buf, "0"); // 0 for not huffman
-    if (char.codePointAt(0) < 256) {
-      // sign that char is packed in one byte
-      buf = appendBits(buf, "0");
-      const encoded = helper.numToBits(char.charCodeAt(0), 8);
-      buf = appendBits(buf, encoded);
-    } else {
-      // sign that char is packed in 21 bits
-      buf = appendBits(buf, "1");
-      buf = appendBits(buf, helper.numToBits(char.codePointAt(0), 21));
-    }
+    const cp = str.codePointAt(i);
+    const ch = String.fromCodePoint(cp);
+    const bs = enc.encode(ch);
+    for (const b of bs) out.push(b);
+    i += ch.length;
   }
-  // now apply shift for encryption
-  const shift = helper.sha256ToOffset(key, blockChars.length);
-  const part1 = blockChars.slice(shift);
-  const part2 = blockChars.slice(0, shift);
-  // const shiftedChars = part1.concat(part2);
-  const shiftedChars = blockChars;
-  const rawBits = buf;
-  const rawBytes = bitsToByteArray(rawBits);
-  const compressedBytes = await gzipCompressBytes(rawBytes);
-  const compressedBits = bytesToBits(compressedBytes);
-  const useGzip = compressedBits.length < rawBits.length;
-  const payloadBits = (useGzip ? "1" : "0") + (useGzip ? compressedBits : rawBits);
-  const ret = helper.encodeBinaryString(payloadBits, shiftedChars);
-  return ret;
+  return new Uint8Array(out);
 }
 
-function bitToBool(char) {
-  if (char !== "0" && char !== "1") {
-    throw new Error(`bitToBool required binary value; '${char}' is invalid`);
-  } else {
-    return (char == "1");
+function detokenizeFromBytesWithDict(bytes, dict) {
+  const result = [];
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    if (b === ESC) {
+      if (i + 1 >= bytes.length) throw new Error("Truncated token stream");
+      const idx = bytes[++i];
+      if (idx >= dict.length) throw new Error("Invalid token index");
+      const chunk = enc.encode(dict[idx]);
+      for (const cb of chunk) result.push(cb);
+    } else {
+      result.push(b);
+    }
   }
+  return dec.decode(new Uint8Array(result));
+}
+
+/* --- Huffman coding (canonical) --- */
+function buildHuffmanLengths(bytes) {
+  const freq = new Uint32Array(256);
+  for (const b of bytes) freq[b]++;
+
+  const nodes = [];
+  for (let s = 0; s < 256; s++) {
+    if (freq[s] > 0) nodes.push({ sym: s, w: freq[s] });
+  }
+  if (nodes.length === 0) return {};
+
+  if (nodes.length === 1) {
+    return { lengths: { [nodes[0].sym]: 1 } };
+  }
+
+  const pq = nodes.slice();
+  pq.sort((a,b)=>a.w - b.w);
+  while (pq.length > 1) {
+    const a = pq.shift();
+    const b = pq.shift();
+    const parent = { w: a.w + b.w, left: a, right: b };
+    let inserted = false;
+    for (let i = 0; i < pq.length; i++) {
+      if (parent.w <= pq[i].w) { pq.splice(i, 0, parent); inserted = true; break; }
+    }
+    if (!inserted) pq.push(parent);
+  }
+  const root = pq[0];
+
+  const lengths = {};
+  function walk(n, depth) {
+    if (!n) return;
+    if (n.sym !== undefined) {
+      lengths[n.sym] = depth;
+      return;
+    }
+    walk(n.left, depth + 1);
+    walk(n.right, depth + 1);
+  }
+  walk(root, 0);
+
+  return { lengths };
+}
+
+function buildCanonicalCodes(lengthsMap) {
+  const items = Object.entries(lengthsMap).map(([s,l]) => ({ sym: Number(s), len: l }));
+  items.sort((a,b) => a.len - b.len || a.sym - b.sym);
+  const codes = {};
+  let code = 0;
+  let prevLen = 0;
+  for (const it of items) {
+    if (it.len !== prevLen) {
+      code <<= (it.len - prevLen);
+      prevLen = it.len;
+    }
+    codes[it.sym] = { code: code, len: it.len };
+    code++;
+  }
+  const byLen = {};
+  for (const symStr in codes) {
+    const s = Number(symStr);
+    const { code: c, len } = codes[s];
+    if (!byLen[len]) byLen[len] = new Map();
+    byLen[len].set(c, s);
+  }
+  return { codes, byLen };
+}
+
+function huffmanEncodeWithBitlen(bytes, codes) {
+  const out = [];
+  let cur = 0;
+  let nbits = 0;
+  let totalBits = 0;
+  for (const b of bytes) {
+    const e = codes[b];
+    if (!e) throw new Error("Missing Huffman code for symbol: " + b);
+    const { code, len } = e;
+    totalBits += len;
+    for (let k = len - 1; k >= 0; k--) {
+      const bit = (code >> k) & 1;
+      cur = (cur << 1) | bit;
+      nbits++;
+      if (nbits === 8) {
+        out.push(cur & 0xFF);
+        cur = 0; nbits = 0;
+      }
+    }
+  }
+  if (nbits > 0) {
+    cur = cur << (8 - nbits);
+    out.push(cur & 0xFF);
+  }
+  return { bytes: new Uint8Array(out), bitLen: totalBits };
+}
+
+function huffmanDecodeFromBits(bytes, bitLen, byLen) {
+  const out = [];
+  let acc = 0;
+  let accLen = 0;
+  let bitsConsumed = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    let val = bytes[i];
+    for (let b = 7; b >= 0; b--) {
+      if (bitsConsumed >= bitLen) break;
+      const bit = (val >> b) & 1;
+      acc = (acc << 1) | bit;
+      accLen++;
+      bitsConsumed++;
+      const mp = byLen[accLen];
+      if (mp && mp.has(acc)) {
+        out.push(mp.get(acc));
+        acc = 0;
+        accLen = 0;
+      }
+    }
+  }
+  return new Uint8Array(out);
+}
+
+/* --- framing helpers --- */
+function u32(n){ return [(n>>24)&0xFF,(n>>16)&0xFF,(n>>8)&0xFF,n&0xFF]; }
+
+function makeFrameRaw(dict, huffEntries, dataBitLen, dataBytes) {
+  const dictEncoded = dict.map(s => enc.encode(s));
+  let dictBytesLen = 0;
+  for (const d of dictEncoded) dictBytesLen += d.length;
+  const huffEntriesLen = huffEntries.length;
+  const headerLen = 2 + dict.length*2 + (huffEntriesLen?2 + (huffEntriesLen*2):2) + 4;
+  const totalLen = headerLen + dictBytesLen + dataBytes.length;
+  const out = new Uint8Array(totalLen);
+  let p = 0;
+  out[p++] = (dict.length >> 8) & 0xFF;
+  out[p++] = dict.length & 0xFF;
+  for (const b of dictEncoded) {
+    out[p++] = (b.length >> 8) & 0xFF;
+    out[p++] = b.length & 0xFF;
+    out.set(b, p); p += b.length;
+  }
+  out[p++] = (huffEntriesLen >> 8) & 0xFF;
+  out[p++] = huffEntriesLen & 0xFF;
+  for (const h of huffEntries) {
+    out[p++] = h.sym & 0xFF;
+    out[p++] = h.len & 0xFF;
+  }
+  out.set(u32(dataBitLen), p); p += 4;
+  out.set(dataBytes, p); p += dataBytes.length;
+  return out;
+}
+
+function parseFrameRaw(frameBytes) {
+  let p = 0;
+  if (frameBytes.length < 6) throw new Error("Frame too small");
+  const dictCount = (frameBytes[p++]<<8) | frameBytes[p++];
+  const dict = [];
+  for (let i = 0; i < dictCount; i++) {
+    const ln = (frameBytes[p++]<<8) | frameBytes[p++];
+    const slice = frameBytes.slice(p, p + ln);
+    dict.push(dec.decode(slice));
+    p += ln;
+  }
+  const huffCount = (frameBytes[p++]<<8) | frameBytes[p++];
+  const huffEntries = [];
+  for (let i = 0; i < huffCount; i++) {
+    const sym = frameBytes[p++];
+    const len = frameBytes[p++];
+    huffEntries.push({ sym, len });
+  }
+  const dataBitLen = (frameBytes[p++]<<24) | (frameBytes[p++]<<16) | (frameBytes[p++]<<8) | frameBytes[p++];
+  const data = frameBytes.slice(p);
+  return { dict, huffEntries, dataBitLen, data };
+}
+
+/* --- bitpack keyed chars --- */
+function encodeBytesToChars(bytes, keyedChars) {
+  const bitsPerChar = Math.floor(Math.log2(keyedChars.length));
+  if (bitsPerChar <= 0) throw new Error("charset too small");
+  let buf = 0n;
+  let bits = 0n;
+  let out = "";
+  const mask = (1 << bitsPerChar) - 1;
+  for (let i = 0; i < bytes.length; i++) {
+    buf = (buf << 8n) | BigInt(bytes[i]);
+    bits += 8n;
+    while (bits >= BigInt(bitsPerChar)) {
+      bits -= BigInt(bitsPerChar);
+      const idx = Number((buf >> bits) & BigInt(mask));
+      out += keyedChars[idx];
+    }
+  }
+  if (bits > 0n) {
+    const idx = Number((buf << (BigInt(bitsPerChar) - bits)) & BigInt(mask));
+    out += keyedChars[idx];
+  }
+  return out;
+}
+
+function decodeCharsToBytes(str, keyedChars) {
+  const map = Object.fromEntries(keyedChars.map((c, i) => [c, i]));
+  const bitsPerChar = Math.floor(Math.log2(keyedChars.length));
+  let buf = 0n;
+  let bits = 0n;
+  const out = [];
+  const mask = (1 << bitsPerChar) - 1;
+  for (let i = 0; i < str.length;) {
+    const code = str.codePointAt(i);
+    const ch = String.fromCodePoint(code);
+    i += ch.length;
+    const idx = map[ch];
+    if (idx === undefined) throw new Error("Invalid encoded character during decode");
+    buf = (buf << BigInt(bitsPerChar)) | BigInt(idx);
+    bits += BigInt(bitsPerChar);
+    while (bits >= 8n) {
+      bits -= 8n;
+      const byte = Number((buf >> bits) & 0xFFn);
+      out.push(byte);
+    }
+  }
+  return new Uint8Array(out);
+}
+
+/* --- XOR helper --- */
+function xorBytesWithKey(u8, keyStr) {
+  if (!keyStr) return u8;
+  const k = enc.encode(keyStr);
+  if (k.length === 0) return u8;
+  const out = new Uint8Array(u8.length);
+  for (let i = 0; i < u8.length; i++) out[i] = u8[i] ^ k[i % k.length];
+  return out;
+}
+
+/* --- HIGH LEVEL: encode / decode --- */
+const MODE_SIMPLE = 0;
+const MODE_ADVANCED = 1;
+
+async function compressAndEncode(text, key) {
+  const utf8 = enc.encode(text);
+
+  // Mode 0: plain deflate of UTF-8 (low overhead for short inputs)
+  const simpleCompressed = pako.deflate(utf8);
+  const simpleFrame = new Uint8Array(1 + 4 + simpleCompressed.length);
+  simpleFrame[0] = MODE_SIMPLE;
+  simpleFrame.set(u32(simpleCompressed.length), 1);
+  simpleFrame.set(simpleCompressed, 5);
+
+  // Mode 1: dynamic dict + huffman + deflate (better for larger/repetitive text)
+  const dynamic = buildDynamicDict(text);
+  const dict = dynamic.slice(0, MAX_DICT_ENTRIES).concat(STATIC_DICT.filter(s => !dynamic.includes(s))).slice(0, 254);
+
+  const tokenBytes = tokenizeWithDict(text, dict);
+
+  const { lengths } = buildHuffmanLengths(tokenBytes);
+  const lengthMap = lengths || {};
+  const canonical = buildCanonicalCodes(lengthMap);
+  const codes = canonical.codes || {};
+
+  const huffEntries = Object.keys(lengthMap).map(k => ({ sym: Number(k), len: lengthMap[k] }));
+
+  const { bytes: huffBytes, bitLen } = huffmanEncodeWithBitlen(tokenBytes, codes);
+
+  const preframe = makeFrameRaw(dict, huffEntries, bitLen, huffBytes);
+
+  const advancedCompressed = pako.deflate(preframe);
+  const advancedFrame = new Uint8Array(1 + 4 + advancedCompressed.length);
+  advancedFrame[0] = MODE_ADVANCED;
+  advancedFrame.set(u32(advancedCompressed.length), 1);
+  advancedFrame.set(advancedCompressed, 5);
+
+  const frame = (advancedFrame.length <= simpleFrame.length) ? advancedFrame : simpleFrame;
+  const xored = xorBytesWithKey(frame, key);
+
+  const keyed = await getKeyedChars(key || "");
+  return encodeBytesToChars(xored, keyed);
+}
+
+async function decodeAndDecompress(str, key) {
+  const keyed = await getKeyedChars(key || "");
+  const bytes = decodeCharsToBytes(str, keyed);
+  const descr = xorBytesWithKey(bytes, key);
+
+  if (descr.length < 4) throw new Error("Frame too small");
+
+  let mode = descr[0];
+  let headerOffset = 1;
+  // Legacy support: no mode byte, length starts at 0
+  if (mode !== MODE_SIMPLE && mode !== MODE_ADVANCED) {
+    mode = MODE_ADVANCED;
+    headerOffset = 0;
+  }
+
+  if (descr.length < headerOffset + 4) throw new Error("Frame too small");
+  const clen = (descr[headerOffset]<<24)|(descr[headerOffset+1]<<16)|(descr[headerOffset+2]<<8)|descr[headerOffset+3];
+  if (descr.length < headerOffset + 4 + clen) throw new Error("Frame truncated or invalid compressed length");
+  const compressed = descr.slice(headerOffset + 4, headerOffset + 4 + clen);
+
+  if (mode === MODE_SIMPLE) {
+    const raw = pako.inflate(compressed);
+    return dec.decode(raw);
+  }
+
+  const preframe = pako.inflate(compressed);
+  const { dict, huffEntries, dataBitLen, data } = parseFrameRaw(preframe);
+
+  const lengthsMap = {};
+  for (const he of huffEntries) lengthsMap[he.sym] = he.len;
+  const canonical = buildCanonicalCodes(lengthsMap);
+  const byLen = canonical.byLen || {};
+
+  const tokenBytes = huffmanDecodeFromBits(data, dataBitLen, byLen);
+  return detokenizeFromBytesWithDict(tokenBytes, dict);
+}
+
+async function encode(text, key) {
+  return compressAndEncode(String(text ?? ""), key || "");
 }
 
 async function decode(str, key) {
-  // apply shift for decryption
-  // const shift = await sha256ToOffset(key, blockChars.length);
-  // const part1 = blockChars.slice(shift);
-  // const part2 = blockChars.slice(0, shift);
-  // const shiftedChars = part1.concat(part2);
-  const shiftedChars = blockChars;
-  const payloadBits = helper.decodeBinaryString(str, shiftedChars);
-  if (payloadBits === "") return "";
-  const useGzip = payloadBits[0] === "1";
-  const bodyBits = payloadBits.slice(1);
-  let bits = "";
-  if (useGzip) {
-    const compressedBytes = bitsToBytesExact(bodyBits);
-    const rawBytes = await gzipDecompressBytes(compressedBytes);
-    bits = byteArrayToBits(rawBytes);
-  } else {
-    bits = bodyBits;
-  }
-
-
-  let result = "";
-
-
-  for (var i = 0; i < bits.length; i++) {
-    const isHuffman = bitToBool(bits[i]);
-    if (!isHuffman) {
-      i++;
-      // literal encoding
-      const charLen = bitToBool(bits[i]) ? 21 : 8;
-      i++;
-      // read charLen bits of code
-      result += String.fromCodePoint(helper.bitsToNum(bits.slice(i, i+charLen)));
-      i += charLen - 1;
-    } else {
-      // huffman encoding
-      let readHuffmanBits = "";
-      while (huffmanCodes.indexOf(readHuffmanBits) === -1) {
-        i++;
-        if (i >= bits.length) {
-          throw new Error("Truncated Huffman code in stream");
-        }
-        readHuffmanBits += bits[i];
-      }
-      result += huffmanTokens[huffmanCodes.indexOf(readHuffmanBits)];
-    }
-  }
-  return result;
+  if (!str) return "";
+  return decodeAndDecompress(String(str ?? ""), key || "");
 }
 
 window.encrypt = encode;
