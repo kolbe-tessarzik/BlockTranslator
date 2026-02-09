@@ -25,6 +25,825 @@ const MIN_OCCURRENCE = 2;
 const MAX_DICT_ENTRIES = 200; // keep <=254 so token indices fit in one byte
 const ESC = 0xFF; // escape marker for tokens (safe in UTF-8 byte stream)
 
+/* --- Legacy static Huffman tables (old mode) --- */
+
+const huffmanTokens = [
+    " ",
+    "e",
+    "t",
+    "o",
+    "a",
+    "i",
+    "n",
+    "s",
+    "h",
+    "r",
+    "l",
+    "\n",
+    "u",
+    "y",
+    ".",
+    "d",
+    "w",
+    "m",
+    "g",
+    "c",
+    "b",
+    "f",
+    "'",
+    ",",
+    "k",
+    "p",
+    "!",
+    "v",
+    "?",
+    "j",
+    "z",
+    "-",
+    "x",
+    "q",
+    "\"",
+    "0",
+    "1",
+    "2",
+    "3",
+    "5",
+    "7",
+    "8",
+    "4",
+    "9",
+    ":",
+    "6",
+    "e ",
+    " t",
+    "th",
+    "t ",
+    ".\n",
+    "s ",
+    "ou",
+    "he",
+    "in",
+    " a",
+    " i",
+    ", ",
+    "re",
+    " w",
+    " b",
+    "an",
+    "on",
+    "er",
+    "ha",
+    " s",
+    " h",
+    "at",
+    "yo",
+    " o",
+    "ng",
+    "it",
+    "d ",
+    "y ",
+    "o ",
+    " y",
+    "n ",
+    "!\n",
+    ". ",
+    "be",
+    "ll",
+    "is",
+    "es",
+    " m",
+    " c",
+    "to",
+    " d",
+    "r ",
+    "hi",
+    "a ",
+    "ee",
+    "ve",
+    "ar",
+    "st",
+    " f",
+    "?\n",
+    "ne",
+    "al",
+    "g ",
+    "en",
+    "ea",
+    "or",
+    "no",
+    " g",
+    "we",
+    " l",
+    "i ",
+    "u ",
+    "ho",
+    "ow",
+    "me",
+    "'s",
+    "l ",
+    "ur",
+    "wh",
+    "le",
+    "\ni",
+    "e.",
+    " n",
+    "nd",
+    "se",
+    "do",
+    " p",
+    "li",
+    "ti",
+    "lo",
+    "te",
+    "ot",
+    "f ",
+    "\nw",
+    "ma",
+    "ut",
+    "\nt",
+    "as",
+    "co",
+    "of",
+    " r",
+    "el",
+    "ry",
+    "n'",
+    "ey",
+    "t.",
+    "go",
+    "om",
+    "us",
+    "'t",
+    "nt",
+    "ca",
+    "ri",
+    "wa",
+    "m ",
+    "ke",
+    "t'",
+    "ta",
+    "et",
+    "ro",
+    "so",
+    "s.",
+    "\ny",
+    "de",
+    "! ",
+    "ed",
+    "k ",
+    " k",
+    "ad",
+    "w ",
+    "av",
+    "i'",
+    "oo",
+    "la",
+    "ki",
+    "ay",
+    "ul",
+    "e'",
+    "ld",
+    " j",
+    "..",
+    "ck",
+    "h ",
+    "\nh",
+    "mo",
+    "e!",
+    "ge",
+    "gh",
+    "wi",
+    "wo",
+    "ye",
+    " e",
+    "ly",
+    "rr",
+    "rs",
+    "ch",
+    "\na",
+    "ra",
+    "ic",
+    "ol",
+    "tt",
+    "ba",
+    "fl",
+    "ig",
+    "os",
+    "y.",
+    "'r",
+    "ns",
+    "s!",
+    "'m",
+    "ev",
+    "s,",
+    "\nb",
+    "ce",
+    "ec",
+    "pe",
+    "bu",
+    "fo",
+    "ht",
+    "ie",
+    "il",
+    "y,",
+    "di",
+    "e?",
+    "na",
+    "nk",
+    "am",
+    "bo",
+    "ac",
+    "io",
+    "po",
+    "un",
+    "ss",
+    "\ns",
+    "bl",
+    "kn",
+    " u",
+    "id",
+    "n.",
+    "ak",
+    "e,",
+    "sh",
+    "ai",
+    "if",
+    "d.",
+    "em",
+    "ir",
+    "sa",
+    "si",
+    "? ",
+    "fe",
+    "ju",
+    "od",
+    "rt",
+    "su",
+    "p ",
+    "\no",
+    "g.",
+    "im",
+    "ni",
+    "t!",
+    "t?",
+    "tr",
+    "up",
+    "hu",
+    "pl",
+    "um",
+    "my",
+    "r.",
+    "fr",
+    "iv",
+    "mi",
+    "ab",
+    "da",
+    "oi",
+    "ok",
+    "u'",
+    "ct",
+    "tu",
+    "h,",
+    "pa",
+    "rd",
+    "\nn",
+    "nc",
+    "op",
+    "s?",
+    "t,",
+    "\nm",
+    "fi",
+    "n,",
+    "pr",
+    "ap",
+    "pi",
+    "ik",
+    "ny",
+    "ov",
+    "ug",
+    " v",
+    "ci",
+    "gr",
+    "nn",
+    "y!",
+    "gi",
+    "k.",
+    "o.",
+    "ff",
+    "gu",
+    "vi",
+    "fa",
+    "jo",
+    "l.",
+    "oh",
+    "ts",
+    "va",
+    "rk",
+    "tl",
+    "ob",
+    "\nc",
+    "ah",
+    "dy",
+    "ia",
+    "lk",
+    "n!",
+    "sp",
+    "cr",
+    "w.",
+    "\nl",
+    "br",
+    "hy",
+    "n?",
+    "o,",
+    "rn",
+    "sn",
+    "y'",
+    "'l",
+    "ep",
+    "ex",
+    "fu",
+    "r,",
+    "r!",
+    "sm",
+    "uc",
+    "ue",
+    "au",
+    "mp",
+    "ew",
+    "ga",
+    "y?",
+    "\nd",
+    "'v",
+    "ag",
+    "h.",
+    "oc",
+    "pp",
+    "qu",
+    "mu",
+    "wn",
+    "ds",
+    "?!",
+    "dr",
+    "l,",
+    "rm",
+    "sc",
+    "ty",
+    "ua",
+    "aw",
+    "g?",
+    "gs",
+    "lu",
+    "mb",
+    "yb",
+    "ys",
+    "zz",
+    "\nr",
+    "cu",
+    "ks",
+    "ls",
+    "oe",
+    "p.",
+    "ui",
+    "\ng",
+    "bi",
+    "cl",
+    "eg",
+    "k,",
+    "mr",
+    "rl",
+    "uz",
+    "d,",
+    "dn",
+    "ei",
+    "m.",
+    "og",
+    "af",
+    "az",
+    "by",
+    "nl",
+    "du",
+    "ef",
+    "g,",
+    "pu",
+    "ru",
+    "w,",
+    "yi",
+    "b ",
+    "g!",
+    "hr",
+    "oy",
+    "'d",
+    "e-",
+    "lt",
+    "r?",
+    "u.",
+    "w!",
+    "yt",
+    "\nv",
+    "a,",
+    "tw",
+    "ud",
+    "\nf",
+    "\np",
+    " q",
+    "eo",
+    "ip",
+    "lp",
+    "m!",
+    "nu",
+    "ps",
+    "sk",
+    "tc",
+    "ft",
+    "m,",
+    "oa",
+    "u?",
+    "uy",
+    "ws",
+    "a.",
+    "ms",
+    "rc",
+    "sl",
+    "u,",
+    "zy",
+    "\nk",
+    "lm",
+    "o!",
+    "yw",
+    "\nj",
+    "d!",
+    "d?",
+    "ek",
+    "mm",
+    "o?",
+    "pt",
+    "sq",
+    "sy",
+    "z,",
+    " \"",
+    "-b",
+    ",\n",
+    "00",
+    "b.",
+    "c ",
+    "ib",
+    "je",
+    "k!",
+    "rg",
+    "sw",
+    "ub",
+    "vo",
+    "-a",
+    "a!",
+    "bs",
+    "gl",
+    "ja",
+    "ky",
+    "l?",
+    "m?",
+    "p,",
+    "rp",
+    "rv",
+    "uf",
+    "xp",
+    "ze",
+    "\ne",
+    "0 ",
+    "dd",
+    "eh",
+    "h!",
+    "kr",
+    "lf",
+    "nf",
+    "p!",
+    "ph",
+    "tg",
+    "x ",
+    "xt",
+    "zi",
+    "\nu",
+    " 2",
+    "-f",
+    "\" ",
+    "a?",
+    "bb",
+    "c.",
+    "gn",
+    "h?",
+    "k?",
+    "nh",
+    "o'",
+    "py",
+    "rf",
+    "wr",
+    "xa",
+    "xc",
+    " '",
+    "-c",
+    "-o",
+    "-t",
+    "?\"",
+    "'a",
+    "d-",
+    "eb",
+    "f.",
+    "iz",
+    "ka",
+    "lw",
+    "n-",
+    "p-",
+    "r-",
+    "rw",
+    "w?",
+    "wy",
+    "y-",
+    "yc",
+    "ym",
+    "\n ",
+    "\n.",
+    "\n\"",
+    " 1",
+    " 3",
+    "-d",
+    "-m",
+    "-s",
+    ".\"",
+    "\"\n",
+    "27",
+    "30",
+    "a-",
+    "a'",
+    "c!",
+    "cc",
+    "dl",
+    "dv",
+    "ez",
+    "h-",
+    "hn",
+    "i,",
+    "i?",
+    "i.",
+    "ix",
+    "ko",
+    "l-",
+    "l!",
+    "lc",
+    "nb",
+    "o-",
+    "rh",
+    "w'",
+    "ya",
+    "yd",
+    "z!",
+    " 0",
+    " 8",
+    "-e",
+    "-g",
+    "-i",
+    "-k",
+    "-y",
+    "!!",
+    ".i",
+    "' ",
+    "'c",
+    "\"?",
+    "\"t",
+    "\"w",
+    "09",
+    "10",
+    "5.",
+    "7 ",
+    "75",
+    "90",
+    "ae",
+    "ax",
+    "c?",
+    "cs",
+    "cy",
+    "d'",
+    "db",
+    "df",
+    "dm",
+    "e\n",
+    "f?",
+    "fk",
+    "gg",
+    "hl",
+    "hm",
+    "i-",
+    "jf",
+    "kl",
+    "kw",
+    "lr",
+    "m-",
+    "nj",
+    "ox",
+    "p?",
+    "t-",
+    "td",
+    "tn",
+    "tv",
+    "u!",
+    "uh",
+    "v?",
+    "wf",
+    "x,",
+    "xi",
+    "z ",
+    "z.",
+    "za",
+    "zw",
+    "\n3",
+    "\nq",
+    "  ",
+    " 4",
+    " 7",
+    " 9",
+    "-8",
+    "-h",
+    "-l",
+    "-n",
+    "-p",
+    ",\"",
+    ",0",
+    ",h",
+    ": ",
+    ":1",
+    ".?",
+    ".a",
+    ".r",
+    ".u",
+    "'e",
+    "'n",
+    "\"!",
+    "\"d",
+    "\"e",
+    "\"h",
+    "\"i",
+    "\"m",
+    "\"s",
+    "\"y",
+    "0!",
+    "0.",
+    "05",
+    "0s",
+    "1.",
+    "11",
+    "15",
+    "18",
+    "20",
+    "24",
+    "35",
+    "3r",
+    "44",
+    "47",
+    "4b",
+    "5 ",
+    "5,",
+    "56",
+    "6.",
+    "7-",
+    "8,",
+    "80",
+    "81",
+    "83",
+    "9:",
+    "aj",
+    "b,",
+    "b!",
+    "b'",
+    "bj",
+    "bv",
+    "d\n",
+    "dg",
+    "dh",
+    "dj",
+    "dw",
+    "ej",
+    "eq",
+    "eu",
+    "f!",
+    "f'",
+    "fc",
+    "fs",
+    "g'",
+    "g\"",
+    "gd",
+    "gt",
+    "gy",
+    "hh",
+    "hs",
+    "i!",
+    "iu",
+    "j-",
+    "k'",
+    "kb",
+    "kf",
+    "kh",
+    "kp",
+    "kt",
+    "l'",
+    "lv",
+    "m'",
+    "ml",
+    "mn",
+    "n:",
+    "np",
+    "nr",
+    "nv",
+    "nw",
+    "nx",
+    "oq",
+    "oz",
+    "r'",
+    "rb",
+    "rj",
+    "s\n",
+    "s-",
+    "s'",
+    "s\"",
+    "tb",
+    "tm",
+    "uj",
+    "uo",
+    "uq",
+    "v.",
+    "vy",
+    "w\n",
+    "wb",
+    "wd",
+    "wg",
+    "wk",
+    "wl",
+    "x!",
+    "x.",
+    "xe",
+    "xh",
+    "y\"",
+    "yn",
+    "yr",
+    "z?",
+    "zo"
+];
+
+const huffmanTokenMap = new Map(huffmanTokens.map((token, i) => [token, i]));
+const maxHuffmanTokenLen = huffmanTokens.reduce((max, token) => Math.max(max, token.length), 0);
+
+function appendBits(buf, bits) {
+  if (typeof bits !== "string" || !/^[01]+$/.test(bits)) {
+    throw new Error(`Invalid bits '${bits}'`);
+  }
+  return buf + bits;
+}
+
+function bitsToByteArray(bits) {
+  if (bits === "") return new Uint8Array([0]);
+  const padding = (8 - (bits.length % 8)) % 8;
+  const padded = padding ? (bits + "0".repeat(padding)) : bits;
+  const bytes = new Uint8Array(1 + padded.length / 8);
+  bytes[0] = padding;
+  for (let i = 0; i < padded.length; i += 8) {
+    bytes[1 + i / 8] = parseInt(padded.slice(i, i + 8), 2);
+  }
+  return bytes;
+}
+
+function byteArrayToBits(bytes) {
+  if (bytes.length === 0) return "";
+  const padding = bytes[0];
+  let bits = "";
+  for (let i = 1; i < bytes.length; i++) {
+    bits += helper.numToBits(bytes[i], 8);
+  }
+  return padding ? bits.slice(0, -padding) : bits;
+}
+
+function bytesToBits(bytes) {
+  let bits = "";
+  for (const byte of bytes) {
+    bits += helper.numToBits(byte, 8);
+  }
+  return bits;
+}
+
+function bitsToBytesExact(bits) {
+  if (bits.length % 8 !== 0) {
+    throw new Error("Compressed bitstream is not byte-aligned");
+  }
+  const out = new Uint8Array(bits.length / 8);
+  for (let i = 0; i < bits.length; i += 8) {
+    out[i / 8] = parseInt(bits.slice(i, i + 8), 2);
+  }
+  return out;
+}
+
+function bitToBool(char) {
+  if (char !== "0" && char !== "1") {
+    throw new Error(`bitToBool required binary value; '${char}' is invalid`);
+  }
+  return (char == "1");
+}
+
 /* --- BLOCK_CHARS / keyed alphabet --- */
 let BLOCK_CHARS = null;
 function buildBlockChars() {
@@ -368,9 +1187,195 @@ function xorBytesWithKey(u8, keyStr) {
 /* --- HIGH LEVEL: encode / decode --- */
 const MODE_SIMPLE = 0;
 const MODE_ADVANCED = 1;
+const MODE_RAW = 2;
+const MODE_OLD = 3;
+
+function buildTokenHuffmanLengths(counts) {
+  const nodes = [];
+  for (const [idx, weight] of counts.entries()) {
+    if (weight > 0) nodes.push({ sym: idx, w: weight });
+  }
+  if (nodes.length === 0) return {};
+  if (nodes.length === 1) {
+    return { lengths: { [nodes[0].sym]: 1 } };
+  }
+
+  const pq = nodes.slice();
+  pq.sort((a, b) => a.w - b.w);
+  while (pq.length > 1) {
+    const a = pq.shift();
+    const b = pq.shift();
+    const parent = { w: a.w + b.w, left: a, right: b };
+    let inserted = false;
+    for (let i = 0; i < pq.length; i++) {
+      if (parent.w <= pq[i].w) { pq.splice(i, 0, parent); inserted = true; break; }
+    }
+    if (!inserted) pq.push(parent);
+  }
+
+  const root = pq[0];
+  const lengths = {};
+  function walk(n, depth) {
+    if (!n) return;
+    if (n.sym !== undefined) {
+      lengths[n.sym] = depth;
+      return;
+    }
+    walk(n.left, depth + 1);
+    walk(n.right, depth + 1);
+  }
+  walk(root, 0);
+  return { lengths };
+}
+
+function legacyTokenize(text) {
+  const items = [];
+  const counts = new Map();
+  const chars = Array.from(text);
+  for (let i = 0; i < chars.length; i++) {
+    let matched = false;
+    const maxLen = Math.min(maxHuffmanTokenLen, chars.length - i);
+    for (let len = maxLen; len >= 1; len--) {
+      const token = chars.slice(i, i + len).join("");
+      const index = huffmanTokenMap.get(token);
+      if (index !== undefined) {
+        items.push({ t: index });
+        counts.set(index, (counts.get(index) || 0) + 1);
+        i += len - 1;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      items.push({ c: chars[i] });
+    }
+  }
+  return { items, counts };
+}
+
+function makeLegacyPreframe(entries, dataBytes) {
+  const totalLen = 2 + entries.length * 3 + dataBytes.length;
+  const out = new Uint8Array(totalLen);
+  let p = 0;
+  out[p++] = (entries.length >> 8) & 0xFF;
+  out[p++] = entries.length & 0xFF;
+  for (const e of entries) {
+    out[p++] = (e.idx >> 8) & 0xFF;
+    out[p++] = e.idx & 0xFF;
+    out[p++] = e.len & 0xFF;
+  }
+  out.set(dataBytes, p);
+  return out;
+}
+
+function parseLegacyPreframe(bytes) {
+  if (bytes.length < 2) throw new Error("Legacy frame too small");
+  let p = 0;
+  const count = (bytes[p++] << 8) | bytes[p++];
+  const entries = [];
+  for (let i = 0; i < count; i++) {
+    if (p + 3 > bytes.length) throw new Error("Legacy map truncated");
+    const idx = (bytes[p++] << 8) | bytes[p++];
+    const len = bytes[p++];
+    entries.push({ idx, len });
+  }
+  const dataBytes = bytes.slice(p);
+  return { entries, dataBytes };
+}
+
+function legacyEncodePayloadBytes(text) {
+  const { items, counts } = legacyTokenize(text);
+  const { lengths } = buildTokenHuffmanLengths(counts);
+  const lengthMap = lengths || {};
+  const canonical = buildCanonicalCodes(lengthMap);
+  const codes = canonical.codes || {};
+
+  const entries = Object.keys(lengthMap).map(k => ({ idx: Number(k), len: lengthMap[k] }));
+
+  let buf = "";
+  for (const item of items) {
+    if (item.t !== undefined) {
+      const code = codes[item.t];
+      if (!code) {
+        // should not happen, but fall back to literal
+        const ch = huffmanTokens[item.t];
+        buf = appendBits(buf, "0");
+        if (ch.codePointAt(0) < 256) {
+          buf = appendBits(buf, "0");
+          buf = appendBits(buf, helper.numToBits(ch.charCodeAt(0), 8));
+        } else {
+          buf = appendBits(buf, "1");
+          buf = appendBits(buf, helper.numToBits(ch.codePointAt(0), 21));
+        }
+        continue;
+      }
+      buf = appendBits(buf, "1");
+      buf = appendBits(buf, helper.numToBits(code.code, code.len));
+      continue;
+    }
+    const char = item.c;
+    buf = appendBits(buf, "0");
+    if (char.codePointAt(0) < 256) {
+      buf = appendBits(buf, "0");
+      buf = appendBits(buf, helper.numToBits(char.charCodeAt(0), 8));
+    } else {
+      buf = appendBits(buf, "1");
+      buf = appendBits(buf, helper.numToBits(char.codePointAt(0), 21));
+    }
+  }
+
+  const dataBytes = bitsToByteArray(buf);
+  return makeLegacyPreframe(entries, dataBytes);
+}
+
+function legacyDecodePayloadBytes(preframeBytes) {
+  const { entries, dataBytes } = parseLegacyPreframe(preframeBytes);
+  const lengthsMap = {};
+  for (const e of entries) lengthsMap[e.idx] = e.len;
+  const canonical = buildCanonicalCodes(lengthsMap);
+  const byLen = canonical.byLen || {};
+  const bits = byteArrayToBits(dataBytes);
+  let result = "";
+  for (let i = 0; i < bits.length; i++) {
+    const isHuffman = bitToBool(bits[i]);
+    if (!isHuffman) {
+      i++;
+      const charLen = bitToBool(bits[i]) ? 21 : 8;
+      i++;
+      result += String.fromCodePoint(helper.bitsToNum(bits.slice(i, i + charLen)));
+      i += charLen - 1;
+    } else {
+      let acc = 0;
+      let accLen = 0;
+      let matched = false;
+      while (i + 1 < bits.length) {
+        i++;
+        acc = (acc << 1) | (bits[i] === "1" ? 1 : 0);
+        accLen++;
+        const mp = byLen[accLen];
+        if (mp && mp.has(acc)) {
+          const tokenIdx = mp.get(acc);
+          result += huffmanTokens[tokenIdx];
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) throw new Error("Truncated Huffman code in stream");
+    }
+  }
+  return result;
+}
 
 async function compressAndEncode(text, key) {
   const utf8 = enc.encode(text);
+
+  // Mode 2: raw UTF-8 (no length header) for very short inputs
+  let rawFrame = null;
+  if (utf8.length <= 512) {
+    rawFrame = new Uint8Array(1 + utf8.length);
+    rawFrame[0] = MODE_RAW;
+    rawFrame.set(utf8, 1);
+  }
 
   // Mode 0: plain deflate of UTF-8 (low overhead for short inputs)
   const simpleCompressed = pako.deflate(utf8);
@@ -402,7 +1407,17 @@ async function compressAndEncode(text, key) {
   advancedFrame.set(u32(advancedCompressed.length), 1);
   advancedFrame.set(advancedCompressed, 5);
 
-  const frame = (advancedFrame.length <= simpleFrame.length) ? advancedFrame : simpleFrame;
+  // Mode 3: legacy token stream with minimal Huffman map
+  const legacyPreframe = legacyEncodePayloadBytes(text);
+  const legacyCompressed = pako.deflate(legacyPreframe);
+  const legacyFrame = new Uint8Array(1 + 4 + legacyCompressed.length);
+  legacyFrame[0] = MODE_OLD;
+  legacyFrame.set(u32(legacyCompressed.length), 1);
+  legacyFrame.set(legacyCompressed, 5);
+
+  let frame = (advancedFrame.length <= simpleFrame.length) ? advancedFrame : simpleFrame;
+  if (rawFrame && rawFrame.length <= frame.length) frame = rawFrame;
+  if (legacyFrame.length <= frame.length) frame = legacyFrame;
   const xored = xorBytesWithKey(frame, key);
 
   const keyed = await getKeyedChars(key || "");
@@ -414,20 +1429,29 @@ async function decodeAndDecompress(str, key) {
   const bytes = decodeCharsToBytes(str, keyed);
   const descr = xorBytesWithKey(bytes, key);
 
-  if (descr.length < 4) throw new Error("Frame too small");
-
   let mode = descr[0];
   let headerOffset = 1;
   // Legacy support: no mode byte, length starts at 0
-  if (mode !== MODE_SIMPLE && mode !== MODE_ADVANCED) {
+  if (mode !== MODE_SIMPLE && mode !== MODE_ADVANCED && mode !== MODE_RAW && mode !== MODE_OLD) {
     mode = MODE_ADVANCED;
     headerOffset = 0;
+  }
+
+  if (mode === MODE_RAW) {
+    if (descr.length < 1) throw new Error("Raw frame too small");
+    const raw = descr.slice(1);
+    return dec.decode(raw);
   }
 
   if (descr.length < headerOffset + 4) throw new Error("Frame too small");
   const clen = (descr[headerOffset]<<24)|(descr[headerOffset+1]<<16)|(descr[headerOffset+2]<<8)|descr[headerOffset+3];
   if (descr.length < headerOffset + 4 + clen) throw new Error("Frame truncated or invalid compressed length");
   const compressed = descr.slice(headerOffset + 4, headerOffset + 4 + clen);
+
+  if (mode === MODE_OLD) {
+    const preframe = pako.inflate(compressed);
+    return legacyDecodePayloadBytes(preframe);
+  }
 
   if (mode === MODE_SIMPLE) {
     const raw = pako.inflate(compressed);
