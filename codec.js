@@ -2,11 +2,11 @@ import pako from "https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.esm.mjs";
 
 let helper;
 
-if (window.location.href.includes("http://localhost:")) {
-  // dev; use local copy
+try {
+  // Prefer local copy (works on localhost and GitHub Pages)
   helper = await import('./helpers.js');
-} else {
-  // use cdn version
+} catch {
+  // Fallback to CDN
   helper = await import(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslator@e0f676a144210148c66923ec08128c11bda4a53f/helpers.js?${Date.now()}`);
 }
 
