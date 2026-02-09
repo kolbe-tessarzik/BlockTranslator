@@ -4,6 +4,10 @@ let jsonData = {};
 window.allVersions = [];
 const loadedVersions = {};
 let currentVersion;
+let devState = false;
+let devFileInput;
+let customObjectUrl;
+const CUSTOM_VERSION_NAME = "Custom";
 
 async function selectVersion(version) {
     if (jsonData[version] !== undefined) {
@@ -73,10 +77,57 @@ function loadMyScript(version) {
 
 function addVersion(name, url) {
   jsonData[name] = url;
-  window.allVersions.push(name);
+  if (!window.allVersions.includes(name)) {
+    window.allVersions.push(name);
+  }
 }
 
 window.managerJSLoaded = true;
+
+function ensureDevFileInput() {
+  if (devFileInput) return devFileInput;
+  devFileInput = document.createElement('input');
+  devFileInput.type = 'file';
+  devFileInput.accept = '.js,.mjs,application/javascript,text/javascript';
+  devFileInput.style.position = 'fixed';
+  devFileInput.style.left = '-9999px';
+  devFileInput.style.width = '1px';
+  devFileInput.style.height = '1px';
+  devFileInput.setAttribute('aria-hidden', 'true');
+  devFileInput.addEventListener('change', () => {
+    const file = devFileInput.files && devFileInput.files[0];
+    if (!file) return;
+    if (customObjectUrl) {
+      URL.revokeObjectURL(customObjectUrl);
+    }
+    customObjectUrl = URL.createObjectURL(file);
+    addVersion(CUSTOM_VERSION_NAME, customObjectUrl);
+    window.dispatchEvent(new Event("versions-loaded"));
+  });
+  document.body.appendChild(devFileInput);
+  return devFileInput;
+}
+
+function activateDevMode() {
+  if (!document.body) {
+    window.addEventListener('DOMContentLoaded', activateDevMode, { once: true });
+    return;
+  }
+  const input = ensureDevFileInput();
+  // Show file selector immediately on dev mode activation
+  input.value = '';
+  input.click();
+}
+
+Object.defineProperty(window, 'dev', {
+  configurable: true,
+  get() { return devState; },
+  set(val) {
+    const next = Boolean(val);
+    devState = next;
+    if (next) activateDevMode();
+  }
+});
 
 async function loadDataForCache(url) {
   const response = await fetch(url);
@@ -88,7 +139,11 @@ async function loadStuff() {
   console.log("Fetching versions . . .");
   const response = await fetch(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslatorCrossVersion@main/versions.json?force=1&${Date.now()}`, {cache: "no-store"});
 
+  const existingCustomUrl = jsonData[CUSTOM_VERSION_NAME];
   jsonData = {...jsonData, ... (await response.json()) };
+  if (existingCustomUrl) {
+    jsonData[CUSTOM_VERSION_NAME] = existingCustomUrl;
+  }
   window.allVersions = Array.from(Object.keys(jsonData));
   for (const ver of window.allVersions) {
     // don't await, the point is just to cache for faster loading in the future

@@ -10,6 +10,9 @@ const UNICODE_RANGES = [
 
 const TOTAL_CHARS = UNICODE_RANGES[0] + UNICODE_RANGES[1];
 
+// Reserved marker for dev/local scripts
+const CUSTOM_VERSION_MARKER = { bit: 1, major: 15, minor: 31, patch: 31 };
+
 function encodeVersion(major, minor, patch, bit) {
   if (
     minor < 0 || minor > 31 ||
@@ -61,6 +64,14 @@ function decodeVersion(char) {
 }
 
 function encodeVersionScript(version) {
+    if (version === "Custom") {
+        return encodeVersion(
+            CUSTOM_VERSION_MARKER.major,
+            CUSTOM_VERSION_MARKER.minor,
+            CUSTOM_VERSION_MARKER.patch,
+            CUSTOM_VERSION_MARKER.bit
+        );
+    }
     const delimiters = /[ .]+/; // Splits on either a dot or a forward slash
     const list = version.split(delimiters);
     if (list.length !== 4) {
@@ -72,6 +83,14 @@ function encodeVersionScript(version) {
 
 function getVersionScript(char) {
     const ver = decodeVersion(char);
+    if (
+        ver.bit === CUSTOM_VERSION_MARKER.bit &&
+        ver.major === CUSTOM_VERSION_MARKER.major &&
+        ver.minor === CUSTOM_VERSION_MARKER.minor &&
+        ver.patch === CUSTOM_VERSION_MARKER.patch
+    ) {
+        return "Custom";
+    }
     return `${ver.bit ? "Fatal" : "Kolbe"} ${ver.major}.${ver.minor}.${ver.patch}`;
 }
 
