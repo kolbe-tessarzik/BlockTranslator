@@ -1,13 +1,94 @@
 import pako from "https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.esm.mjs";
 
-let helper;
+/**
+ * @param {string} bits - binary string ("0"/"1")
+ * @param {string[]} alphabet - unique Unicode characters
+ * @returns {string}
+ */
+export function encodeBinaryString(bits, alphabet) {
+    if (bits == "") return "";
+    if (!/^[01]*$/.test(bits)) {
+        throw new Error("Input must be a binary string");
+    }
 
-try {
-  // Prefer local copy (works on localhost and GitHub Pages)
-  helper = await import('./helpers.js');
-} catch {
-  // Fallback to CDN
-  helper = await import(`https://cdn.jsdelivr.net/gh/kolbe-tessarzik/BlockTranslator@e0f676a144210148c66923ec08128c11bda4a53f/helpers.js?${Date.now()}`);
+    const base = BigInt(alphabet.length);
+
+    // Prefix sentinel bit
+    let value = 1n;
+    for (const b of bits) {
+        value = (value << 1n) | BigInt(b);
+    }
+
+    // Base convert
+    let out = "";
+    if (value === 0n) {
+        return alphabet[0];
+    }
+
+    while (value > 0n) {
+        const r = value % base;
+        out = alphabet[Number(r)] + out;
+        value /= base;
+    }
+
+    return out;
+}
+
+/**
+ * @param {string} str
+ * @param {string[]} alphabet
+ * @returns {string} binary string
+ */
+export function decodeBinaryString(str, alphabet) {
+  if (str == "") return "";
+    const base = BigInt(alphabet.length);
+    const index = new Map(alphabet.map((c, i) => [c, BigInt(i)]));
+
+    // Decode Unicode to BigInt
+    let value = 0n;
+    for (const ch of str) {
+        const v = index.get(ch);
+        if (v === undefined) {
+            throw new Error("Invalid character");
+        }
+        value = value * base + v;
+    }
+
+    // Convert to bits
+    let bits = value.toString(2);
+
+    // Remove sentinel "1"
+    if (bits[0] !== "1") {
+        throw new Error("Invalid encoding");
+    }
+
+    return bits.slice(1);
+}
+
+
+export function numToBits(num, numBits = 8) {
+    let ret = "";
+    for (let bit = numBits - 1; bit >= 0; bit--) {
+        ret += (num & (0b1 << bit)) ? "1" : "0";
+    }
+    return ret;
+}
+
+export function bitsToNum(bits) {
+    let ret = 0;
+    for (const bit of bits) {
+        ret = (ret << 1) | (bit === "1" ? 1 : 0);
+    }
+    return ret;
+}
+
+export async function sha256ToOffset(str, mod) {
+    const data = new TextEncoder().encode(str);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    const view = new DataView(hash);
+    const high = BigInt(view.getUint32(0));
+    const low  = BigInt(view.getUint32(4));
+    return Number(((high<<32n)|low) % BigInt(mod));
 }
 
 const enc = new TextEncoder();
@@ -813,7 +894,7 @@ function byteArrayToBits(bytes) {
   const padding = bytes[0];
   let bits = "";
   for (let i = 1; i < bytes.length; i++) {
-    bits += helper.numToBits(bytes[i], 8);
+    bits += numToBits(bytes[i], 8);
   }
   return padding ? bits.slice(0, -padding) : bits;
 }
@@ -821,7 +902,7 @@ function byteArrayToBits(bytes) {
 function bytesToBits(bytes) {
   let bits = "";
   for (const byte of bytes) {
-    bits += helper.numToBits(byte, 8);
+    bits += numToBits(byte, 8);
   }
   return bits;
 }
@@ -870,7 +951,7 @@ function buildBlockChars() {
 async function getKeyedChars(key) {
   if (!BLOCK_CHARS) BLOCK_CHARS = buildBlockChars();
   if (!key) return BLOCK_CHARS;
-  const off = await helper.sha256ToOffset(key, BLOCK_CHARS.length);
+  const off = await sha256ToOffset(key, BLOCK_CHARS.length);
   return BLOCK_CHARS.slice(off).concat(BLOCK_CHARS.slice(0, off));
 }
 
@@ -1302,25 +1383,25 @@ function legacyEncodePayloadBytes(text) {
         buf = appendBits(buf, "0");
         if (ch.codePointAt(0) < 256) {
           buf = appendBits(buf, "0");
-          buf = appendBits(buf, helper.numToBits(ch.charCodeAt(0), 8));
+          buf = appendBits(buf, numToBits(ch.charCodeAt(0), 8));
         } else {
           buf = appendBits(buf, "1");
-          buf = appendBits(buf, helper.numToBits(ch.codePointAt(0), 21));
+          buf = appendBits(buf, numToBits(ch.codePointAt(0), 21));
         }
         continue;
       }
       buf = appendBits(buf, "1");
-      buf = appendBits(buf, helper.numToBits(code.code, code.len));
+      buf = appendBits(buf, numToBits(code.code, code.len));
       continue;
     }
     const char = item.c;
     buf = appendBits(buf, "0");
     if (char.codePointAt(0) < 256) {
       buf = appendBits(buf, "0");
-      buf = appendBits(buf, helper.numToBits(char.charCodeAt(0), 8));
+      buf = appendBits(buf, numToBits(char.charCodeAt(0), 8));
     } else {
       buf = appendBits(buf, "1");
-      buf = appendBits(buf, helper.numToBits(char.codePointAt(0), 21));
+      buf = appendBits(buf, numToBits(char.codePointAt(0), 21));
     }
   }
 
@@ -1342,7 +1423,7 @@ function legacyDecodePayloadBytes(preframeBytes) {
       i++;
       const charLen = bitToBool(bits[i]) ? 21 : 8;
       i++;
-      result += String.fromCodePoint(helper.bitsToNum(bits.slice(i, i + charLen)));
+      result += String.fromCodePoint(bitsToNum(bits.slice(i, i + charLen)));
       i += charLen - 1;
     } else {
       let acc = 0;
