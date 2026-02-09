@@ -119,13 +119,31 @@ function activateDevMode() {
   input.click();
 }
 
+function areArrsEqual(a, b) {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((value, index) => value === b[index]);
+}
+
+
 Object.defineProperty(window, 'dev', {
   configurable: true,
   get() { return devState; },
   set(val) {
     const next = Boolean(val);
     devState = next;
-    if (next) activateDevMode();
+    if (!next) return;
+
+    if (!window.devPw) {
+      activateDevMode();
+      return;
+    }
+
+    const pwValue = typeof window.devPw === 'string' ? window.devPw : window.devPw.value;
+    if (pwValue === 'mangos') {
+      activateDevMode();
+    }
   }
 });
 
