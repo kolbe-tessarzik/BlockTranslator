@@ -96,10 +96,10 @@ function getVersionScript(char) {
 
 async function loadInitialScript() {
     while (!window.managerJSLoaded) {
-
+        await new Promise((resolve) => setTimeout(resolve, 10));
     }
     addVersion("Latest", "codec.js");
-    loadMyScript("Latest");
+    // Keep worker creation lazy; only start when a version is actually requested.
 }
 
 loadInitialScript();

@@ -1,88 +1,144 @@
-let myScript;
 console.log("Script loaded!");
 let jsonData = {};
 window.allVersions = [];
-const loadedVersions = {};
-let currentVersion;
+const workerControllers = {};
 let devState = false;
 let devFileInput;
 let customObjectUrl;
 const CUSTOM_VERSION_NAME = "Custom";
+const WORKER_PATH = "version-worker.js";
 
 async function selectVersion(version) {
-    if (jsonData[version] !== undefined) {
-        await loadMyScript(version);
-    } else {
-        throw new Error(`Invalid version '${version}'`);
+  if (jsonData[version] !== undefined) {
+    await ensureWorkerForVersion(version);
+  } else {
+    throw new Error(`Invalid version '${version}'`);
+  }
+}
+
+function resolveVersionUrl(version) {
+  const url = jsonData[version];
+  if (!url) {
+    throw new Error(`Invalid version '${version}'`);
+  }
+  return url;
+}
+
+function createWorkerController(version, url) {
+  const worker = new Worker(WORKER_PATH, { type: "module" });
+  const pending = new Map();
+  let requestId = 1;
+  let readyResolve;
+  let readyReject;
+  let readySettled = false;
+
+  const ready = new Promise((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+
+  function settleReady(ok, value) {
+    if (readySettled) return;
+    readySettled = true;
+    if (ok) readyResolve();
+    else readyReject(value);
+  }
+
+  function failAll(err) {
+    for (const { reject } of pending.values()) {
+      reject(err);
     }
+    pending.clear();
+  }
+
+  worker.addEventListener("message", (event) => {
+    const msg = event.data || {};
+    if (msg.type === "ready") {
+      settleReady(true);
+      return;
+    }
+    if (msg.type === "init-error") {
+      const err = new Error(msg.error || `Worker init failed for ${version}`);
+      settleReady(false, err);
+      failAll(err);
+      return;
+    }
+    if (msg.type === "response") {
+      const entry = pending.get(msg.id);
+      if (!entry) return;
+      pending.delete(msg.id);
+      if (msg.ok) entry.resolve(msg.result);
+      else entry.reject(new Error(msg.error || "Worker failed"));
+    }
+  });
+
+  worker.addEventListener("error", (event) => {
+    const err = event?.error || new Error(`Worker error for ${version}`);
+    settleReady(false, err);
+    failAll(err);
+  });
+
+  worker.postMessage({ type: "init", version, url });
+
+  return {
+    worker,
+    ready,
+    call(action, payload) {
+      return ready.then(() => new Promise((resolve, reject) => {
+        const id = requestId++;
+        pending.set(id, { resolve, reject });
+        worker.postMessage({ type: "call", id, action, payload });
+      }));
+    },
+    terminate(reason) {
+      worker.terminate();
+      failAll(new Error(reason || "Worker terminated"));
+    }
+  };
+}
+
+function ensureWorkerForVersion(version) {
+  const url = resolveVersionUrl(version);
+  if (!workerControllers[version]) {
+    workerControllers[version] = createWorkerController(version, url);
+  }
+  return workerControllers[version].ready.then(() => workerControllers[version]).catch((err) => {
+    workerControllers[version]?.terminate("Worker init failed");
+    delete workerControllers[version];
+    throw err;
+  });
+}
+
+async function encryptWithVersion(version, text, key) {
+  const worker = await ensureWorkerForVersion(version);
+  return worker.call("encrypt", { text, key });
+}
+
+async function decryptWithVersion(version, text, key) {
+  const worker = await ensureWorkerForVersion(version);
+  return worker.call("decrypt", { text, key });
 }
 
 function loadMyScript(version) {
-  return new Promise(async (resolve, reject) => {
-    if (!window.allVersions.includes(version)) {
-      console.log(window.allVersions);
-      reject(`invalid version: ${version}`);
-      return;
-    }
-    if (loadedVersions[version]) {
-      const cached = loadedVersions[version];
-      window.encrypt = cached.encrypt;
-      window.decrypt = cached.decrypt;
-      window.cleanup = cached.cleanup;
-      currentVersion = version;
-      resolve();
-      return;
-    }
-    // clear globals so we can detect the new module's exports reliably
-    window.encrypt = undefined;
-    window.decrypt = undefined;
-    if (myScript) {
-        if (window.cleanup) {
-          // allow script to clean up before unloading
-          await window.cleanup();
-          window.cleanup = undefined;
-        }
-        document.head.removeChild(myScript);
-    }
-    myScript = document.createElement('script');
-    myScript.type = "module";
-    myScript.src = jsonData[version];
-    myScript.onload = () => {
-        const start = performance.now();
-        const maxWaitMs = 1000;
-        const tick = () => {
-          if (window.encrypt && window.decrypt) {
-            loadedVersions[version] = {
-              encrypt: window.encrypt,
-              decrypt: window.decrypt,
-              cleanup: window.cleanup,
-            };
-            currentVersion = version;
-            resolve();
-            return;
-          }
-          if (performance.now() - start >= maxWaitMs) {
-            reject("Script didn't expose the right functions");
-            return;
-          }
-          setTimeout(tick, 10);
-        };
-        tick();
-    };
-    myScript.onerror = reject;
-    document.head.appendChild(myScript);
-  });
-
+  return ensureWorkerForVersion(version);
 }
 
 function addVersion(name, url) {
+  const prevUrl = jsonData[name];
   jsonData[name] = url;
   if (!window.allVersions.includes(name)) {
     window.allVersions.push(name);
   }
+  if (prevUrl && prevUrl !== url && workerControllers[name]) {
+    workerControllers[name].terminate("Version URL updated");
+    delete workerControllers[name];
+  }
 }
 
 window.managerJSLoaded = true;
+window.encryptWithVersion = encryptWithVersion;
+window.decryptWithVersion = decryptWithVersion;
+window.loadMyScript = loadMyScript;
 
 function ensureDevFileInput() {
   if (devFileInput) return devFileInput;

@@ -183,6 +183,16 @@ function debounce(fn, ms = 250) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+const AUTO_TIMEOUT_MS = 1000;
+
+function withTimeout(promise, ms) {
+  let t;
+  const timeout = new Promise((_, reject) => {
+    t = setTimeout(() => reject(new Error("Operation timed out")), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
+
 let _suppress = false; // prevent programmatic updates from retriggering handlers
 
 // count user-perceived characters (grapheme clusters) — falls back to code-point counting
@@ -232,67 +242,61 @@ function updateCompressionStats(original, encoded) {
   compressionStats.classList.add('visible');
 }
 
-async function loadScriptFor(val) {
-  if (val == "auto") {
-    return;
-  }
-  try {
-    await loadMyScript(val);
-  } catch {
-    // load latest
-    await loadMyScript("Latest");
-  }
-}
-
 async function specialEncrypt(text, key) {
   if (versionDropdown.value == "auto") {
-    let allResults = [];
-    for (const version of window.allVersions) {
+    const versions = Array.isArray(window.allVersions) && window.allVersions.length
+      ? window.allVersions
+      : ["Latest"];
+    const tasks = versions.map(async (version) => {
       try {
-        console.log("Try version", version)
-        await loadMyScript(version);
-        console.log("version loaded");
+        console.log("Try version", version);
         const verCode = (version == "Latest") ? encodeVersionScript("Kolbe 0.0.0") : encodeVersionScript(version);
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
-            reject(new Error("Operation timed out"));
-          }, 1000);
-        });
-        const encrypted = await Promise.race([encrypt(text, key), timeoutPromise]);
-        allResults.push(verCode + encrypted);
+        const encrypted = await withTimeout(
+          encryptWithVersion(version, text, key),
+          AUTO_TIMEOUT_MS
+        );
+        return verCode + encrypted;
       } catch (e) {
         console.error(e);
+        return null;
+      }
+    });
+    const allResults = (await Promise.all(tasks)).filter(Boolean);
+    let shortest = null;
+    for (const result of allResults) {
+      if (!shortest || countChars(result) < countChars(shortest)) {
+        shortest = result;
       }
     }
-    let shortest;
-    for (const result of allResults) {
-      if (!shortest) {
-        shortest = result;
-      } else {
-        shortest = (countChars(shortest) < countChars(result)) ? shortest : result;
-      }
+    if (!shortest) {
+      throw new Error("No versions completed successfully");
     }
     return shortest;
   } else {
     const version = versionDropdown.value;
-    await loadScriptFor(version);
     const verCode = (version == "Latest") ? encodeVersionScript("Kolbe 0.0.0") : encodeVersionScript(version);
-    return verCode + (await encrypt(text, key));
+    const encrypted = await encryptWithVersion(version, text, key);
+    return verCode + encrypted;
   }
 }
 
 async function specialDecrypt(text, key) {
-  const version = getVersionScript(text[0]);
-  console.log("Using version", version)
+  let version = "Latest";
   try {
-    await loadMyScript(version);
-  } catch {
-    // invalid verision, just use latest
-    await loadMyScript("Latest");
+    version = getVersionScript(text[0]);
+  } catch (e) {
+    console.error(e);
   }
-  const result = await decrypt(text.slice(1), key);
-  await loadScriptFor(versionDropdown.value);
-  return result;
+  console.log("Using version", version);
+  try {
+    return await decryptWithVersion(version, text.slice(1), key);
+  } catch (e) {
+    if (version !== "Latest") {
+      console.error(e);
+      return await decryptWithVersion("Latest", text.slice(1), key);
+    }
+    throw e;
+  }
 }
 
 async function liveEncodeFromInput() {
