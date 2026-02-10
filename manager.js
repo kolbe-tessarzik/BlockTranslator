@@ -7,17 +7,25 @@ let devFileInput;
 let customObjectUrl;
 const CUSTOM_VERSION_NAME = "Custom";
 const WORKER_PATH = "version-worker.js";
+const LATEST_VERSION_MARKER = "Kolbe 0.0.0";
+
+function normalizeVersionName(version) {
+  if (version === LATEST_VERSION_MARKER) return "Latest";
+  return version;
+}
 
 async function selectVersion(version) {
-  if (jsonData[version] !== undefined) {
-    await ensureWorkerForVersion(version);
+  const normalized = normalizeVersionName(version);
+  if (jsonData[normalized] !== undefined) {
+    await ensureWorkerForVersion(normalized);
   } else {
     throw new Error(`Invalid version '${version}'`);
   }
 }
 
 function resolveVersionUrl(version) {
-  const url = jsonData[version];
+  const normalized = normalizeVersionName(version);
+  const url = jsonData[normalized];
   if (!url) {
     throw new Error(`Invalid version '${version}'`);
   }
@@ -98,13 +106,14 @@ function createWorkerController(version, url) {
 }
 
 function ensureWorkerForVersion(version) {
-  const url = resolveVersionUrl(version);
-  if (!workerControllers[version]) {
-    workerControllers[version] = createWorkerController(version, url);
+  const normalized = normalizeVersionName(version);
+  const url = resolveVersionUrl(normalized);
+  if (!workerControllers[normalized]) {
+    workerControllers[normalized] = createWorkerController(normalized, url);
   }
-  return workerControllers[version].ready.then(() => workerControllers[version]).catch((err) => {
-    workerControllers[version]?.terminate("Worker init failed");
-    delete workerControllers[version];
+  return workerControllers[normalized].ready.then(() => workerControllers[normalized]).catch((err) => {
+    workerControllers[normalized]?.terminate("Worker init failed");
+    delete workerControllers[normalized];
     throw err;
   });
 }
