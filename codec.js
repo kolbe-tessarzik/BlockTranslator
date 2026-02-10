@@ -932,8 +932,14 @@ function buildBlockChars() {
   const out = [];
   const reCcCf = /[\p{Cc}\p{Cf}]/u;
   const reMnMe = /\p{Mn}|\p{Me}/u;
-  for (let cp = 0x21; cp <= 0xFFFD; cp++) {
+  const isNonCharacter = (cp) => {
+    if (cp >= 0xFDD0 && cp <= 0xFDEF) return true;
+    const last16 = cp & 0xFFFF;
+    return last16 === 0xFFFE || last16 === 0xFFFF;
+  };
+  for (let cp = 0x21; cp <= 0x10FFFF; cp++) {
     if (cp >= 0xD800 && cp <= 0xDFFF) { cp = 0xDFFF; continue; }
+    if (isNonCharacter(cp)) continue;
     try {
       const ch = String.fromCodePoint(cp);
       if (/\s/.test(ch)) continue;
