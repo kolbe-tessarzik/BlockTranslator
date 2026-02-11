@@ -183,7 +183,7 @@ function debounce(fn, ms = 250) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
-const AUTO_TIMEOUT_MS = 1000;
+const AUTO_TIMEOUT_MS = 5000;
 
 function withTimeout(promise, ms) {
   let t;
@@ -247,7 +247,15 @@ async function specialEncrypt(text, key) {
     const versions = Array.isArray(window.allVersions) && window.allVersions.length
       ? window.allVersions
       : ["Latest"];
-    const tasks = versions.map(async (version) => {
+    const uniqueVersions = [];
+    const seen = new Set();
+    for (const v of versions) {
+      const normalized = (v === "Kolbe 0.0.0") ? "Latest" : v;
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      uniqueVersions.push(normalized);
+    }
+    const tasks = uniqueVersions.map(async (version) => {
       try {
         console.log("Try version", version);
         const verCode = (version == "Latest") ? encodeVersionScript("Kolbe 0.0.0") : encodeVersionScript(version);
