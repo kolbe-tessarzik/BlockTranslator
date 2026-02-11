@@ -1176,12 +1176,58 @@ function huffmanDecodeFromBits(bytes, bitLen, byLen) {
 /* --- framing helpers --- */
 function u32(n){ return [(n>>24)&0xFF,(n>>16)&0xFF,(n>>8)&0xFF,n&0xFF]; }
 
-function makeFrameRaw(dict, huffEntries, dataBitLen, dataBytes) {
+function packHuffmanLengths(lengthsMap) {
+  const lengths = new Uint8Array(256);
+  let maxLen = 0;
+  for (const k in lengthsMap) {
+    const len = lengthsMap[k] | 0;
+    lengths[k] = len;
+    if (len > maxLen) maxLen = len;
+  }
+  const bitsPerLen = Math.max(1, Math.ceil(Math.log2(maxLen + 1)));
+  let buf = 0;
+  let nbits = 0;
+  const out = [];
+  for (let i = 0; i < 256; i++) {
+    buf = (buf << bitsPerLen) | lengths[i];
+    nbits += bitsPerLen;
+    while (nbits >= 8) {
+      nbits -= 8;
+      out.push((buf >> nbits) & 0xFF);
+    }
+  }
+  if (nbits > 0) out.push((buf << (8 - nbits)) & 0xFF);
+  return { bitsPerLen, packed: new Uint8Array(out) };
+}
+
+function unpackHuffmanLengths(bitsPerLen, packed) {
+  const lengths = {};
+  let buf = 0;
+  let nbits = 0;
+  let idx = 0;
+  const mask = Math.pow(2, bitsPerLen) - 1;
+  for (let i = 0; i < packed.length; i++) {
+    buf = (buf << 8) | packed[i];
+    nbits += 8;
+    while (nbits >= bitsPerLen && idx < 256) {
+      nbits -= bitsPerLen;
+      const len = (buf >> nbits) & mask;
+      if (len > 0) lengths[idx] = len;
+      idx++;
+    }
+  }
+  return lengths;
+}
+
+function makeFrameRaw(dict, huffSpec, dataBitLen, dataBytes) {
   const dictEncoded = dict.map(s => enc.encode(s));
   let dictBytesLen = 0;
   for (const d of dictEncoded) dictBytesLen += d.length;
-  const huffEntriesLen = huffEntries.length;
-  const headerLen = 2 + dict.length*2 + (huffEntriesLen?2 + (huffEntriesLen*2):2) + 4;
+  const huffMode = huffSpec.mode;
+  const huffLen = (huffMode === 0)
+    ? (2 + huffSpec.entries.length * 2)
+    : (1 + 2 + huffSpec.packed.length);
+  const headerLen = 2 + dict.length * 2 + 1 + huffLen + 4;
   const totalLen = headerLen + dictBytesLen + dataBytes.length;
   const out = new Uint8Array(totalLen);
   let p = 0;
@@ -1192,11 +1238,20 @@ function makeFrameRaw(dict, huffEntries, dataBitLen, dataBytes) {
     out[p++] = b.length & 0xFF;
     out.set(b, p); p += b.length;
   }
-  out[p++] = (huffEntriesLen >> 8) & 0xFF;
-  out[p++] = huffEntriesLen & 0xFF;
-  for (const h of huffEntries) {
-    out[p++] = h.sym & 0xFF;
-    out[p++] = h.len & 0xFF;
+  out[p++] = huffMode & 0xFF;
+  if (huffMode === 0) {
+    const huffEntriesLen = huffSpec.entries.length;
+    out[p++] = (huffEntriesLen >> 8) & 0xFF;
+    out[p++] = huffEntriesLen & 0xFF;
+    for (const h of huffSpec.entries) {
+      out[p++] = h.sym & 0xFF;
+      out[p++] = h.len & 0xFF;
+    }
+  } else {
+    out[p++] = huffSpec.bitsPerLen & 0xFF;
+    out[p++] = (huffSpec.packed.length >> 8) & 0xFF;
+    out[p++] = huffSpec.packed.length & 0xFF;
+    out.set(huffSpec.packed, p); p += huffSpec.packed.length;
   }
   out.set(u32(dataBitLen), p); p += 4;
   out.set(dataBytes, p); p += dataBytes.length;
@@ -1214,16 +1269,27 @@ function parseFrameRaw(frameBytes) {
     dict.push(dec.decode(slice));
     p += ln;
   }
-  const huffCount = (frameBytes[p++]<<8) | frameBytes[p++];
-  const huffEntries = [];
-  for (let i = 0; i < huffCount; i++) {
-    const sym = frameBytes[p++];
-    const len = frameBytes[p++];
-    huffEntries.push({ sym, len });
+  const huffMode = frameBytes[p++];
+  let lengthsMap = {};
+  if (huffMode === 0) {
+    const huffCount = (frameBytes[p++]<<8) | frameBytes[p++];
+    for (let i = 0; i < huffCount; i++) {
+      const sym = frameBytes[p++];
+      const len = frameBytes[p++];
+      lengthsMap[sym] = len;
+    }
+  } else if (huffMode === 1) {
+    const bitsPerLen = frameBytes[p++];
+    const packedLen = (frameBytes[p++]<<8) | frameBytes[p++];
+    const packed = frameBytes.slice(p, p + packedLen);
+    p += packedLen;
+    lengthsMap = unpackHuffmanLengths(bitsPerLen, packed);
+  } else {
+    throw new Error("Invalid Huffman map mode");
   }
   const dataBitLen = (frameBytes[p++]<<24) | (frameBytes[p++]<<16) | (frameBytes[p++]<<8) | frameBytes[p++];
   const data = frameBytes.slice(p);
-  return { dict, huffEntries, dataBitLen, data };
+  return { dict, lengthsMap, dataBitLen, data };
 }
 
 /* --- bitpack keyed chars --- */
@@ -1510,6 +1576,7 @@ function legacyDecodePayloadBytes(preframeBytes) {
 
 async function compressAndEncode(text, key) {
   const utf8 = enc.encode(text);
+  const deflateOpts = { level: 9, memLevel: 9 };
 
   // Mode 2: raw UTF-8 (no length header) for very short inputs
   let rawFrame = null;
@@ -1520,7 +1587,7 @@ async function compressAndEncode(text, key) {
   }
 
   // Mode 0: plain deflate of UTF-8 (low overhead for short inputs)
-  const simpleCompressed = pako.deflate(utf8);
+  const simpleCompressed = pako.deflate(utf8, deflateOpts);
   const simpleFrame = new Uint8Array(1 + 4 + simpleCompressed.length);
   simpleFrame[0] = MODE_SIMPLE;
   simpleFrame.set(u32(simpleCompressed.length), 1);
@@ -1538,12 +1605,18 @@ async function compressAndEncode(text, key) {
   const codes = canonical.codes || {};
 
   const huffEntries = Object.keys(lengthMap).map(k => ({ sym: Number(k), len: lengthMap[k] }));
+  const packed = packHuffmanLengths(lengthMap);
+  const legacyHuffSize = 2 + huffEntries.length * 2;
+  const packedHuffSize = 1 + 2 + packed.packed.length;
+  const huffSpec = (packedHuffSize < legacyHuffSize)
+    ? { mode: 1, bitsPerLen: packed.bitsPerLen, packed: packed.packed }
+    : { mode: 0, entries: huffEntries };
 
   const { bytes: huffBytes, bitLen } = huffmanEncodeWithBitlen(tokenBytes, codes);
 
-  const preframe = makeFrameRaw(dict, huffEntries, bitLen, huffBytes);
+  const preframe = makeFrameRaw(dict, huffSpec, bitLen, huffBytes);
 
-  const advancedCompressed = pako.deflate(preframe);
+  const advancedCompressed = pako.deflate(preframe, deflateOpts);
   const advancedFrame = new Uint8Array(1 + 4 + advancedCompressed.length);
   advancedFrame[0] = MODE_ADVANCED;
   advancedFrame.set(u32(advancedCompressed.length), 1);
@@ -1551,7 +1624,7 @@ async function compressAndEncode(text, key) {
 
   // Mode 3: legacy token stream with minimal Huffman map
   const legacyPreframe = legacyEncodePayloadBytes(text);
-  const legacyCompressed = pako.deflate(legacyPreframe);
+  const legacyCompressed = pako.deflate(legacyPreframe, deflateOpts);
   const legacyFrame = new Uint8Array(1 + 4 + legacyCompressed.length);
   legacyFrame[0] = MODE_OLD;
   legacyFrame.set(u32(legacyCompressed.length), 1);
@@ -1603,10 +1676,7 @@ async function decodeAndDecompress(str, key) {
   }
 
   const preframe = pako.inflate(compressed);
-  const { dict, huffEntries, dataBitLen, data } = parseFrameRaw(preframe);
-
-  const lengthsMap = {};
-  for (const he of huffEntries) lengthsMap[he.sym] = he.len;
+  const { dict, lengthsMap, dataBitLen, data } = parseFrameRaw(preframe);
   const canonical = buildCanonicalCodes(lengthsMap);
   const byLen = canonical.byLen || {};
 
