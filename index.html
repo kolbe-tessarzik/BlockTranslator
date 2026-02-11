@@ -32,6 +32,9 @@ body{
 header{ margin-bottom: 2.25rem; }
 h1{ font-size: 2rem; font-weight: 600; background: linear-gradient(135deg,var(--text-primary),var(--accent)); background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom: 0.5rem; }
 .subtitle{ color:var(--text-secondary); font-size:0.95rem; font-style:italic; }
+.header-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+.about-link{ text-decoration:none; color:var(--accent); border:1px solid var(--border); padding:0.5rem 0.85rem; border-radius:999px; font-size:0.85rem; font-weight:600; background:rgba(255,255,255,0.03); transition:all 0.18s ease; }
+.about-link:hover{ border-color:var(--accent); box-shadow:0 8px 20px rgba(110,231,183,0.18); }
 
 .section{
   background: var(--bg-secondary);
@@ -108,8 +111,13 @@ button:hover::before{ width:300px; height:300px; }
 
 <div class="container">
   <header>
-    <h1>Block Cipher</h1>
-    <div class="subtitle">Compress and encrypt text with visual encoding</div>
+    <div class="header-row">
+      <div>
+        <h1>Block Cipher</h1>
+        <div class="subtitle">Compress and encrypt text with visual encoding</div>
+      </div>
+      <a class="about-link" href="about.html">About</a>
+    </div>
   </header>
 
   <div class="section">
