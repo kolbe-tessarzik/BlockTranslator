@@ -961,6 +961,16 @@ async function getKeyedChars(key) {
   return BLOCK_CHARS.slice(off).concat(BLOCK_CHARS.slice(0, off));
 }
 
+async function getMixSeed64(key) {
+  if (!key) return 0x9E3779B97F4A7C15n;
+  const data = new TextEncoder().encode(key);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  const view = new DataView(hash);
+  const hi = BigInt(view.getUint32(0));
+  const lo = BigInt(view.getUint32(4));
+  return (hi << 32n) | lo;
+}
+
 /* --- Dynamic dictionary (digger) --- */
 function findCandidates(text, sampleLimit = 200000) {
   const s = (text.length > sampleLimit) ? text.slice(0, sampleLimit) : text;
@@ -1214,43 +1224,63 @@ function parseFrameRaw(frameBytes) {
 }
 
 /* --- bitpack keyed chars --- */
-function encodeBytesToChars(bytes, keyedChars) {
+function encodeBytesToChars(bytes, keyedChars, mixSeed) {
   const bitsPerChar = Math.floor(Math.log2(keyedChars.length));
   if (bitsPerChar <= 0) throw new Error("charset too small");
   let buf = 0n;
   let bits = 0n;
   let out = "";
   const mask = (1 << bitsPerChar) - 1;
+  let state = BigInt(mixSeed || 0n);
   for (let i = 0; i < bytes.length; i++) {
     buf = (buf << 8n) | BigInt(bytes[i]);
     bits += 8n;
     while (bits >= BigInt(bitsPerChar)) {
       bits -= BigInt(bitsPerChar);
-      const idx = Number((buf >> bits) & BigInt(mask));
+      const rawIdx = Number((buf >> bits) & BigInt(mask));
+      state ^= state >> 12n;
+      state ^= state << 25n;
+      state ^= state >> 27n;
+      const rnd = Number((state * 2685821657736338717n) & 0xFFFFFFFFn);
+      const mix = rnd & mask;
+      const idx = (rawIdx + mix) & mask;
       out += keyedChars[idx];
     }
   }
   if (bits > 0n) {
-    const idx = Number((buf << (BigInt(bitsPerChar) - bits)) & BigInt(mask));
+    const rawIdx = Number((buf << (BigInt(bitsPerChar) - bits)) & BigInt(mask));
+    state ^= state >> 12n;
+    state ^= state << 25n;
+    state ^= state >> 27n;
+    const rnd = Number((state * 2685821657736338717n) & 0xFFFFFFFFn);
+    const mix = rnd & mask;
+    const idx = (rawIdx + mix) & mask;
     out += keyedChars[idx];
   }
   return out;
 }
 
-function decodeCharsToBytes(str, keyedChars) {
+function decodeCharsToBytes(str, keyedChars, mixSeed) {
   const map = Object.fromEntries(keyedChars.map((c, i) => [c, i]));
   const bitsPerChar = Math.floor(Math.log2(keyedChars.length));
   let buf = 0n;
   let bits = 0n;
   const out = [];
   const mask = (1 << bitsPerChar) - 1;
+  let state = BigInt(mixSeed || 0n);
   for (let i = 0; i < str.length;) {
     const code = str.codePointAt(i);
     const ch = String.fromCodePoint(code);
     i += ch.length;
     const idx = map[ch];
     if (idx === undefined) throw new Error("Invalid encoded character during decode");
-    buf = (buf << BigInt(bitsPerChar)) | BigInt(idx);
+    state ^= state >> 12n;
+    state ^= state << 25n;
+    state ^= state >> 27n;
+    const rnd = Number((state * 2685821657736338717n) & 0xFFFFFFFFn);
+    const mix = rnd & mask;
+    const rawIdx = (idx - mix) & mask;
+    buf = (buf << BigInt(bitsPerChar)) | BigInt(rawIdx);
     bits += BigInt(bitsPerChar);
     while (bits >= 8n) {
       bits -= 8n;
@@ -1508,12 +1538,14 @@ async function compressAndEncode(text, key) {
   const xored = xorBytesWithKey(frame, key);
 
   const keyed = await getKeyedChars(key || "");
-  return encodeBytesToChars(xored, keyed);
+  const mixSeed = await getMixSeed64(key || "");
+  return encodeBytesToChars(xored, keyed, mixSeed);
 }
 
 async function decodeAndDecompress(str, key) {
   const keyed = await getKeyedChars(key || "");
-  const bytes = decodeCharsToBytes(str, keyed);
+  const mixSeed = await getMixSeed64(key || "");
+  const bytes = decodeCharsToBytes(str, keyed, mixSeed);
   const descr = xorBytesWithKey(bytes, key);
 
   let mode = descr[0];
@@ -1563,7 +1595,11 @@ async function encode(text, key) {
 
 async function decode(str, key) {
   if (!str) return "";
-  return decodeAndDecompress(String(str ?? ""), key || "");
+  try {
+    return await decodeAndDecompress(String(str ?? ""), key || "");
+  } catch {
+    return "";
+  }
 }
 
 window.encrypt = encode;
