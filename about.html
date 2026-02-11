@@ -26,6 +26,7 @@ body{
   min-height: 100vh;
   padding: 2rem 1rem 3rem;
   -webkit-font-smoothing:antialiased;
+  opacity: 0;
 }
 .container{ max-width: 980px; margin: 0 auto; }
 header{ margin-bottom: 2rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; }
@@ -80,7 +81,21 @@ header{ margin-bottom: 2rem; display:flex; align-items:center; justify-content:s
   header{ flex-direction:column; align-items:flex-start; }
   .feature-grid{ grid-template-columns: 1fr; }
 }
+
+.page-ready body{
+  animation: pageFadeIn 0.6s ease-out forwards;
+}
+
+@keyframes pageFadeIn{
+  from{ opacity:0; transform: translateY(6px); }
+  to{ opacity:1; transform: translateY(0); }
+}
 </style>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.documentElement.classList.add('page-ready');
+  });
+</script>
 </head>
 <body>
   <div class="container">
