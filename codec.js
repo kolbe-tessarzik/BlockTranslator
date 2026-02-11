@@ -993,8 +993,10 @@ function findCandidates(text, sampleLimit = 200000) {
   const candidates = [];
   for (const [sub, cnt] of counts.entries()) {
     const len = sub.length;
-    const savingPer = len - 3; // ESC + 1-byte index (3 bytes)
-    const estSavings = cnt * savingPer - (2 + len); // dict storage cost
+    const byteLen = enc.encode(sub).length;
+    const tokenCost = 2; // ESC + 1-byte index
+    const savingPer = byteLen - tokenCost;
+    const estSavings = cnt * savingPer - (2 + byteLen); // dict storage cost (length + bytes)
     if (estSavings > 0) candidates.push({ sub, cnt, len, estSavings });
   }
 
