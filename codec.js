@@ -1011,14 +1011,17 @@ function buildDynamicDict(text) {
 
 /* --- Tokenize / detokenize using ESC + single-byte index --- */
 function tokenizeWithDict(str, dict) {
+  const order = dict
+    .map((token, idx) => ({ token, idx, len: token.length }))
+    .sort((a, b) => b.len - a.len || a.idx - b.idx);
   const out = [];
   let i = 0;
   while (i < str.length) {
     let matched = false;
-    for (let j = 0; j < dict.length; j++) {
-      const d = dict[j];
+    for (let j = 0; j < order.length; j++) {
+      const d = order[j].token;
       if (str.startsWith(d, i)) {
-        out.push(ESC, j);
+        out.push(ESC, order[j].idx);
         i += d.length;
         matched = true;
         break;
@@ -1224,49 +1227,78 @@ function parseFrameRaw(frameBytes) {
 }
 
 /* --- bitpack keyed chars --- */
-function encodeBytesToChars(bytes, keyedChars, mixSeed) {
-  const bitsPerChar = Math.floor(Math.log2(keyedChars.length));
-  if (bitsPerChar <= 0) throw new Error("charset too small");
-  let buf = 0n;
-  let bits = 0n;
-  let out = "";
-  const mask = (1 << bitsPerChar) - 1;
-  let state = BigInt(mixSeed || 0n);
-  for (let i = 0; i < bytes.length; i++) {
-    buf = (buf << 8n) | BigInt(bytes[i]);
-    bits += 8n;
-    while (bits >= BigInt(bitsPerChar)) {
-      bits -= BigInt(bitsPerChar);
-      const rawIdx = Number((buf >> bits) & BigInt(mask));
-      state ^= state >> 12n;
-      state ^= state << 25n;
-      state ^= state >> 27n;
-      const rnd = Number((state * 2685821657736338717n) & 0xFFFFFFFFn);
-      const mix = rnd & mask;
-      const idx = (rawIdx + mix) & mask;
-      out += keyedChars[idx];
+function bytesToBaseDigits(bytes, base) {
+  if (bytes.length === 0) return [];
+  const src = new Uint8Array(bytes.length + 1);
+  src[0] = 1;
+  src.set(bytes, 1);
+  let num = Array.from(src);
+  const out = [];
+  while (num.length > 0) {
+    let carry = 0;
+    const next = [];
+    for (const v of num) {
+      const acc = (carry << 8) + v;
+      const q = Math.floor(acc / base);
+      carry = acc % base;
+      if (next.length > 0 || q !== 0) next.push(q);
     }
+    out.push(carry);
+    num = next;
   }
-  if (bits > 0n) {
-    const rawIdx = Number((buf << (BigInt(bitsPerChar) - bits)) & BigInt(mask));
-    state ^= state >> 12n;
-    state ^= state << 25n;
-    state ^= state >> 27n;
-    const rnd = Number((state * 2685821657736338717n) & 0xFFFFFFFFn);
-    const mix = rnd & mask;
-    const idx = (rawIdx + mix) & mask;
+  out.reverse();
+  return out;
+}
+
+function baseDigitsToBytes(digits, base) {
+  if (digits.length === 0) return new Uint8Array(0);
+  let num = digits.slice();
+  const out = [];
+  while (num.length > 0) {
+    let carry = 0;
+    const next = [];
+    for (const v of num) {
+      const acc = carry * base + v;
+      const q = Math.floor(acc / 256);
+      carry = acc % 256;
+      if (next.length > 0 || q !== 0) next.push(q);
+    }
+    out.push(carry);
+    num = next;
+  }
+  out.reverse();
+  if (out[0] !== 1) throw new Error("Invalid base-N stream");
+  return new Uint8Array(out.slice(1));
+}
+
+function nextMixState(state) {
+  state ^= state >> 12n;
+  state ^= state << 25n;
+  state ^= state >> 27n;
+  const rnd = (state * 2685821657736338717n) & 0xFFFFFFFFn;
+  return { state, rnd };
+}
+
+function encodeBytesToChars(bytes, keyedChars, mixSeed) {
+  const base = keyedChars.length;
+  if (base <= 1) throw new Error("charset too small");
+  const digits = bytesToBaseDigits(bytes, base);
+  let out = "";
+  let state = BigInt(mixSeed || 0n);
+  for (let i = 0; i < digits.length; i++) {
+    const res = nextMixState(state);
+    state = res.state;
+    const mix = Number(res.rnd % BigInt(base));
+    const idx = (digits[i] + mix) % base;
     out += keyedChars[idx];
   }
   return out;
 }
 
 function decodeCharsToBytes(str, keyedChars, mixSeed) {
+  const base = keyedChars.length;
   const map = Object.fromEntries(keyedChars.map((c, i) => [c, i]));
-  const bitsPerChar = Math.floor(Math.log2(keyedChars.length));
-  let buf = 0n;
-  let bits = 0n;
-  const out = [];
-  const mask = (1 << bitsPerChar) - 1;
+  const digits = [];
   let state = BigInt(mixSeed || 0n);
   for (let i = 0; i < str.length;) {
     const code = str.codePointAt(i);
@@ -1274,21 +1306,14 @@ function decodeCharsToBytes(str, keyedChars, mixSeed) {
     i += ch.length;
     const idx = map[ch];
     if (idx === undefined) throw new Error("Invalid encoded character during decode");
-    state ^= state >> 12n;
-    state ^= state << 25n;
-    state ^= state >> 27n;
-    const rnd = Number((state * 2685821657736338717n) & 0xFFFFFFFFn);
-    const mix = rnd & mask;
-    const rawIdx = (idx - mix) & mask;
-    buf = (buf << BigInt(bitsPerChar)) | BigInt(rawIdx);
-    bits += BigInt(bitsPerChar);
-    while (bits >= 8n) {
-      bits -= 8n;
-      const byte = Number((buf >> bits) & 0xFFn);
-      out.push(byte);
-    }
+    const res = nextMixState(state);
+    state = res.state;
+    const mix = Number(res.rnd % BigInt(base));
+    let rawIdx = idx - mix;
+    if (rawIdx < 0) rawIdx += base;
+    digits.push(rawIdx);
   }
-  return new Uint8Array(out);
+  return baseDigitsToBytes(digits, base);
 }
 
 /* --- XOR helper --- */
